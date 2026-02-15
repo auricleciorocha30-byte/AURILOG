@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { LayoutDashboard, Truck, Wallet, Calculator, Menu, X, LogOut, Bell, Settings, CheckSquare, Timer, Fuel, Loader2, Mail, Key, UserPlus, LogIn, AlertCircle, Share2, AlertTriangle, KeyRound, Wifi, WifiOff, CloudUpload, CheckCircle2, Coffee, Play, RefreshCcw, Undo2, Send, Clock, ShieldAlert, MapPinHouse, Lock, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, Truck, Wallet, Calculator, Menu, X, LogOut, Bell, Settings, CheckSquare, Timer, Fuel, Loader2, Mail, Key, UserPlus, LogIn, AlertCircle, Share2, AlertTriangle, KeyRound, Wifi, WifiOff, CloudUpload, CheckCircle2, Coffee, Play, RefreshCcw, Undo2, Send, Clock, ShieldAlert, MapPinHouse, Lock, ShieldCheck, Smartphone, Download } from 'lucide-react';
 import { Dashboard } from './components/Dashboard';
 import { TripManager } from './components/TripManager';
 import { ExpenseManager } from './components/ExpenseManager';
@@ -26,6 +26,7 @@ const App: React.FC = () => {
   const [authLoading, setAuthLoading] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [syncing, setSyncing] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -50,6 +51,27 @@ const App: React.FC = () => {
   const [dbNotifications, setDbNotifications] = useState<DbNotification[]>([]);
   const [roadServices, setRoadServices] = useState<RoadService[]>([]);
   const [dismissedNotificationIds, setDismissedNotificationIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    });
+
+    return () => window.removeEventListener('beforeinstallprompt', () => {});
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) {
+      alert("Para instalar no iPhone/iOS:\n1. Toque no ícone de Compartilhar\n2. Role para baixo e toque em 'Adicionar à Tela de Início'.");
+      return;
+    }
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+    }
+  };
 
   useEffect(() => {
     let interval: any;
@@ -401,6 +423,21 @@ const App: React.FC = () => {
           <MenuBtn icon={Timer} label="Jornada" active={currentView === AppView.JORNADA} onClick={() => {setCurrentView(AppView.JORNADA); setIsMobileMenuOpen(false);}} />
           <MenuBtn icon={MapPinHouse} label="Serviços Estrada" active={currentView === AppView.STATIONS} onClick={() => {setCurrentView(AppView.STATIONS); setIsMobileMenuOpen(false);}} />
         </nav>
+        
+        {/* Botão de Instalação PWA */}
+        <div className="px-2 mb-2">
+          <button 
+            onClick={handleInstallClick} 
+            className="w-full flex items-center gap-3 px-4 py-4 bg-primary-600/10 text-primary-400 rounded-2xl border border-primary-600/20 hover:bg-primary-600 hover:text-white transition-all group"
+          >
+            <Download size={20} className="group-hover:animate-bounce" />
+            <div className="text-left">
+              <p className="text-[10px] font-black uppercase tracking-widest leading-none">Baixar App</p>
+              <p className="text-[8px] font-bold opacity-60 uppercase">Instalar no Celular</p>
+            </div>
+          </button>
+        </div>
+
         <div className="pt-4 border-t border-white/5 mt-auto pb-12">
           <button onClick={async () => { await supabase.auth.signOut(); window.location.reload(); }} className="w-full flex items-center gap-3 px-6 py-4 text-rose-400 font-black uppercase text-xs hover:bg-white/5 rounded-2xl transition-all"><LogOut size={18} /> Sair da Conta</button>
         </div>
