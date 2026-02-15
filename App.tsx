@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { LayoutDashboard, Truck, Wallet, Calculator, Menu, X, LogOut, Bell, Settings, CheckSquare, Timer, Fuel, Loader2, Mail, Key, UserPlus, LogIn, AlertCircle, Share2, AlertTriangle, KeyRound, Wifi, WifiOff, CloudUpload, CheckCircle2, Coffee, Play, RefreshCcw, Undo2, Send, Clock, ShieldAlert, MapPinHouse } from 'lucide-react';
+import { LayoutDashboard, Truck, Wallet, Calculator, Menu, X, LogOut, Bell, Settings, CheckSquare, Timer, Fuel, Loader2, Mail, Key, UserPlus, LogIn, AlertCircle, Share2, AlertTriangle, KeyRound, Wifi, WifiOff, CloudUpload, CheckCircle2, Coffee, Play, RefreshCcw, Undo2, Send, Clock, ShieldAlert, MapPinHouse, Lock, ShieldCheck } from 'lucide-react';
 import { Dashboard } from './components/Dashboard';
 import { TripManager } from './components/TripManager';
 import { ExpenseManager } from './components/ExpenseManager';
@@ -20,6 +20,7 @@ const App: React.FC = () => {
   const isUserMode = new URLSearchParams(window.location.search).get('mode') === 'user';
 
   const [session, setSession] = useState<any>(null);
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
@@ -29,16 +30,18 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  
+  // Estados de Form
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
+  // Estados de Dados
   const [jornadaMode, setJornadaMode] = useState<'IDLE' | 'DRIVING' | 'RESTING'>('IDLE');
   const [jornadaStartTime, setJornadaStartTime] = useState<number | null>(null);
   const [jornadaElapsed, setJornadaElapsed] = useState(0);
-
   const [trips, setTrips] = useState<Trip[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -62,17 +65,6 @@ const App: React.FC = () => {
     }
     return () => clearInterval(interval);
   }, [jornadaMode, jornadaStartTime]);
-
-  useEffect(() => {
-    const savedMode = localStorage.getItem('aurilog_jornada_mode');
-    const savedStartTime = localStorage.getItem('aurilog_jornada_start_time');
-    if (savedMode && (savedMode === 'DRIVING' || savedMode === 'RESTING' || savedMode === 'IDLE')) {
-      setJornadaMode(savedMode as any);
-    }
-    if (savedStartTime && savedStartTime !== 'null') {
-      setJornadaStartTime(Number(savedStartTime));
-    }
-  }, []);
 
   useEffect(() => {
     const handleOnline = () => { setIsOnline(true); syncData(); };
@@ -167,14 +159,12 @@ const App: React.FC = () => {
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const todayStr = today.toISOString().split('T')[0];
     
-    // Notificações do Banco (Admin)
     dbNotifications.forEach(n => {
       if (!n.target_user_email || (session?.user?.email === n.target_user_email)) {
         list.push({ ...n, category: n.category as any, date: 'Alerta Admin' });
       }
     });
 
-    // Notificações de Manutenção
     maintenance.forEach(m => {
       const vehicle = vehicles.find(v => v.id === m.vehicle_id);
       if (!vehicle) return;
@@ -187,7 +177,6 @@ const App: React.FC = () => {
       }
     });
 
-    // Notificações de Finanças (Dívidas)
     expenses.forEach(e => {
       if (!e.is_paid && e.due_date) {
         const dueDate = new Date(e.due_date + 'T12:00:00');
@@ -280,16 +269,16 @@ const App: React.FC = () => {
           password: password 
         });
         
-        if (error) {
-          if (error.message.includes("Invalid login credentials")) {
-            throw new Error("E-mail ou senha incorretos.");
-          }
-          throw error;
-        }
+        if (error) throw new Error("E-mail ou senha incorretos.");
 
         if (data.session) {
-          setSession(data.session);
-          setSuccessMsg("Login realizado com sucesso!");
+          if (!isUserMode) {
+             // Se for login administrativo, validamos e setamos flag local
+             setIsAdminAuthenticated(true);
+          } else {
+             setSession(data.session);
+          }
+          setSuccessMsg("Acesso autorizado!");
         }
       }
     } catch (err: any) {
@@ -299,13 +288,54 @@ const App: React.FC = () => {
     }
   };
 
-  const MenuBtn = ({ icon: Icon, label, active, onClick }: any) => (
-    <button onClick={onClick} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all active:scale-95 ${active ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}><Icon size={20} /><span className="font-bold text-sm">{label}</span></button>
-  );
-
   if (loading) return <div className="h-screen flex items-center justify-center bg-slate-950"><Loader2 className="animate-spin text-primary-500" size={48} /></div>;
 
-  if (!isUserMode) {
+  // LOGIN ADMINISTRATIVO (Caso não esteja autenticado como Admin)
+  if (!isUserMode && !isAdminAuthenticated) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-slate-950 p-6">
+        <div className="w-full max-w-lg bg-slate-900 rounded-[3.5rem] shadow-2xl p-12 border border-slate-800 animate-fade-in">
+           <div className="flex flex-col items-center mb-10 text-center">
+              <div className="bg-primary-600 p-5 rounded-[1.8rem] shadow-xl mb-6 text-white"><ShieldAlert size={48} /></div>
+              <h2 className="text-3xl font-black text-white uppercase tracking-tighter">Painel de Controle</h2>
+              <p className="text-slate-500 font-bold text-xs mt-2 uppercase tracking-widest">Acesso Restrito ao Administrador</p>
+           </div>
+           
+           <form onSubmit={handleAuth} className="space-y-6">
+              <div className="space-y-2">
+                 <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Usuário Master</label>
+                 <div className="relative">
+                    <Mail className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-600" size={20} />
+                    <input required type="email" placeholder="admin@aurilog.com" className="w-full p-5 pl-14 bg-slate-800 border border-slate-700 rounded-3xl font-bold text-white outline-none focus:ring-2 focus:ring-primary-500 transition-all" value={email} onChange={e => setEmail(e.target.value)} />
+                 </div>
+              </div>
+              <div className="space-y-2">
+                 <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Chave de Acesso</label>
+                 <div className="relative">
+                    <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-600" size={20} />
+                    <input required type="password" placeholder="••••••••" className="w-full p-5 pl-14 bg-slate-800 border border-slate-700 rounded-3xl font-bold text-white outline-none focus:ring-2 focus:ring-primary-500 transition-all" value={password} onChange={e => setPassword(e.target.value)} />
+                 </div>
+              </div>
+              
+              {error && <div className="bg-rose-500/10 border border-rose-500/20 p-4 rounded-2xl text-rose-500 text-xs font-black text-center">{error}</div>}
+              {successMsg && <div className="bg-emerald-500/10 border border-emerald-500/20 p-4 rounded-2xl text-emerald-500 text-xs font-black text-center">{successMsg}</div>}
+
+              <button disabled={authLoading} type="submit" className="w-full py-6 bg-primary-600 text-white rounded-3xl font-black text-lg shadow-xl hover:bg-primary-700 transition-all flex items-center justify-center gap-3">
+                 {authLoading ? <Loader2 className="animate-spin" /> : <ShieldCheck size={24} />}
+                 Autenticar Painel
+              </button>
+           </form>
+           
+           <button onClick={() => window.location.href = window.location.origin + '?mode=user'} className="w-full mt-8 text-[10px] font-black uppercase text-slate-600 hover:text-slate-400 transition-all flex items-center justify-center gap-2">
+              <Undo2 size={12}/> Voltar ao Sistema de Viagens
+           </button>
+        </div>
+      </div>
+    );
+  }
+
+  // PORTAL ADMINISTRATIVO AUTENTICADO
+  if (!isUserMode && isAdminAuthenticated) {
     return (
       <div className="min-h-screen bg-slate-50 overflow-y-auto">
         <AdminPanel onRefresh={fetchData} />
@@ -313,6 +343,7 @@ const App: React.FC = () => {
     );
   }
 
+  // LOGIN DO USUÁRIO (SISTEMA DE VIAGENS)
   if (!session) return (
     <div className="min-h-screen w-full flex items-center justify-center bg-slate-900 p-4">
       <div className="w-full max-w-md bg-white rounded-[3rem] shadow-2xl p-10 animate-fade-in border border-white/10">
@@ -342,9 +373,16 @@ const App: React.FC = () => {
             {isPasswordRecovery ? 'Enviar E-mail' : 'Entrar no Sistema'}
           </button>
         </form>
-        <button onClick={() => window.location.href = window.location.origin} className="w-full mt-6 text-[10px] font-black uppercase text-slate-400 hover:text-slate-600 transition-all flex items-center justify-center gap-2"><Undo2 size={12}/> Voltar para o Painel Admin</button>
+        <button onClick={() => window.location.href = window.location.origin} className="w-full mt-6 text-[10px] font-black uppercase text-slate-400 hover:text-slate-600 transition-all flex items-center justify-center gap-2">
+           Acesso Administrativo
+        </button>
       </div>
     </div>
+  );
+
+  // SISTEMA PRINCIPAL AUTENTICADO
+  const MenuBtn = ({ icon: Icon, label, active, onClick }: any) => (
+    <button onClick={onClick} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all active:scale-95 ${active ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}><Icon size={20} /><span className="font-bold text-sm">{label}</span></button>
   );
 
   return (
