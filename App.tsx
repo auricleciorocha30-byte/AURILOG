@@ -112,7 +112,6 @@ const App: React.FC = () => {
   }, [syncing, session]);
 
   const fetchData = async (forceCloud = false) => {
-    // Busca dados básicos do sistema (Serviços e Notificações) mesmo sem sessão se estiver no modo Admin
     try {
       if (navigator.onLine) {
         const [notifRes, servRes] = await Promise.all([
@@ -128,7 +127,6 @@ const App: React.FC = () => {
 
     if (!session?.user) return;
     const userId = session.user.id;
-    const userEmail = session.user.email;
 
     try {
       if (navigator.onLine) {
@@ -167,14 +165,16 @@ const App: React.FC = () => {
     const list: any[] = [];
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
+    const todayStr = today.toISOString().split('T')[0];
+    
+    // Notificações do Banco (Admin)
     dbNotifications.forEach(n => {
-      // Filtra notificações direcionadas se houver sessão
       if (!n.target_user_email || (session?.user?.email === n.target_user_email)) {
         list.push({ ...n, category: n.category as any, date: 'Alerta Admin' });
       }
     });
 
+    // Notificações de Manutenção
     maintenance.forEach(m => {
       const vehicle = vehicles.find(v => v.id === m.vehicle_id);
       if (!vehicle) return;
@@ -184,6 +184,34 @@ const App: React.FC = () => {
       const kmLimit = (m.km_at_purchase || 0) + (m.warranty_km || 0);
       if ((m.warranty_months > 0 && expiryDate < today) || (m.warranty_km > 0 && vehicle.current_km >= kmLimit)) {
         list.push({ id: `maint-${m.id}`, type: 'URGENT', category: 'MAINTENANCE', title: `Manutenção Vencida: ${m.part_name}`, message: `Verifique o veículo ${vehicle.plate}.`, date: 'Agora' });
+      }
+    });
+
+    // Notificações de Finanças (Dívidas)
+    expenses.forEach(e => {
+      if (!e.is_paid && e.due_date) {
+        const dueDate = new Date(e.due_date + 'T12:00:00');
+        const diffDays = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        
+        if (dueDate < today && e.due_date !== todayStr) {
+          list.push({
+            id: `exp-overdue-${e.id}`,
+            type: 'URGENT',
+            category: 'FINANCE',
+            title: 'Dívida em Atraso!',
+            message: `${e.description} - R$ ${e.amount.toLocaleString('pt-BR')}`,
+            date: e.due_date
+          });
+        } else if (diffDays >= 0 && diffDays <= 3) {
+          list.push({
+            id: `exp-upcoming-${e.id}`,
+            type: 'WARNING',
+            category: 'FINANCE',
+            title: diffDays === 0 ? 'Vence Hoje!' : `Vence em ${diffDays} dias`,
+            message: `${e.description} - R$ ${e.amount.toLocaleString('pt-BR')}`,
+            date: e.due_date
+          });
+        }
       }
     });
 
@@ -271,18 +299,12 @@ const App: React.FC = () => {
     }
   };
 
-  const formatTime = (s: number) => {
-    const hrs = Math.floor(s / 3600); const mins = Math.floor((s % 3600) / 60); const secs = s % 60;
-    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
   const MenuBtn = ({ icon: Icon, label, active, onClick }: any) => (
     <button onClick={onClick} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all active:scale-95 ${active ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}><Icon size={20} /><span className="font-bold text-sm">{label}</span></button>
   );
 
   if (loading) return <div className="h-screen flex items-center justify-center bg-slate-950"><Loader2 className="animate-spin text-primary-500" size={48} /></div>;
 
-  // Se NÃO estiver no modo usuário, mostra o ADMIN primeiro (Entry Point)
   if (!isUserMode) {
     return (
       <div className="min-h-screen bg-slate-50 overflow-y-auto">
@@ -291,7 +313,6 @@ const App: React.FC = () => {
     );
   }
 
-  // Se ESTIVER no modo usuário mas não logado, mostra o LOGIN
   if (!session) return (
     <div className="min-h-screen w-full flex items-center justify-center bg-slate-900 p-4">
       <div className="w-full max-w-md bg-white rounded-[3rem] shadow-2xl p-10 animate-fade-in border border-white/10">
@@ -321,17 +342,11 @@ const App: React.FC = () => {
             {isPasswordRecovery ? 'Enviar E-mail' : 'Entrar no Sistema'}
           </button>
         </form>
-        <button 
-          onClick={() => window.location.href = window.location.origin} 
-          className="w-full mt-6 text-[10px] font-black uppercase text-slate-400 hover:text-slate-600 transition-all flex items-center justify-center gap-2"
-        >
-          <Undo2 size={12}/> Voltar para o Painel Admin
-        </button>
+        <button onClick={() => window.location.href = window.location.origin} className="w-full mt-6 text-[10px] font-black uppercase text-slate-400 hover:text-slate-600 transition-all flex items-center justify-center gap-2"><Undo2 size={12}/> Voltar para o Painel Admin</button>
       </div>
     </div>
   );
 
-  // Se ESTIVER logado e no modo usuário, mostra o DASHBOARD
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden relative">
       <aside className={`fixed md:relative z-[200] w-64 h-full bg-slate-900 text-slate-300 p-4 flex flex-col transition-transform duration-300 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
