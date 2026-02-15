@@ -37,8 +37,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh }) => {
   }, []);
 
   const fetchServices = async () => {
-    const { data } = await supabase.from('road_services').select('*').order('created_at', { ascending: false });
-    if (data) setServices(data);
+    try {
+      const { data } = await supabase.from('road_services').select('*').order('created_at', { ascending: false });
+      if (data) setServices(data);
+    } catch (e) {
+      console.log("Fetch services error");
+    }
   };
 
   const handleSendAlert = async (e: React.FormEvent) => {
@@ -90,16 +94,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh }) => {
 
   const handleDeleteService = async (id: string) => {
     if (!confirm("Remover este parceiro da lista oficial?")) return;
-    const { error } = await supabase.from('road_services').delete().eq('id', id);
-    if (!error) fetchServices();
+    try {
+      const { error } = await supabase.from('road_services').delete().eq('id', id);
+      if (!error) fetchServices();
+    } catch (e) {
+      alert("Erro ao deletar serviço.");
+    }
   };
 
   const openMainSystem = () => {
-    window.open(window.location.origin, '_blank');
+    // Abre em nova guia forçando o modo usuário que mostra a tela de login
+    window.open(window.location.origin + '?mode=user', '_blank');
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8 animate-fade-in pb-20 px-4">
+    <div className="max-w-6xl mx-auto space-y-8 animate-fade-in py-12 px-4">
       {/* Header do Admin */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
@@ -109,7 +118,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh }) => {
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
-          <button onClick={openMainSystem} className="flex items-center gap-2 px-6 py-4 bg-emerald-600 text-white rounded-2xl font-black text-xs uppercase shadow-lg hover:bg-emerald-700 transition-all active:scale-95">
+          <button onClick={openMainSystem} className="flex items-center gap-2 px-6 py-4 bg-primary-600 text-white rounded-2xl font-black text-xs uppercase shadow-lg hover:bg-primary-700 transition-all active:scale-95">
             <ExternalLink size={18} /> Abrir Sistema Principal
           </button>
           <div className="flex bg-slate-200 p-1.5 rounded-2xl gap-1">
@@ -122,7 +131,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh }) => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {activeTab === 'ALERTS' ? (
           <>
-            {/* Coluna de Envio de Alertas */}
             <div className="lg:col-span-5 bg-white p-8 rounded-[3rem] border shadow-sm">
               <h3 className="text-xl font-black mb-8 flex items-center gap-2 uppercase tracking-tight">
                 <Bell className="text-primary-600" size={24} /> Enviar Alerta na Central
@@ -171,23 +179,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh }) => {
               </form>
             </div>
 
-            {/* Coluna Informativa Alertas */}
             <div className="lg:col-span-7 space-y-6">
               <div className="bg-slate-900 p-8 rounded-[3rem] text-white">
                 <h4 className="text-xl font-black mb-4 flex items-center gap-2">
-                  <CheckCircle2 className="text-emerald-400" /> Como funciona?
+                  <CheckCircle2 className="text-emerald-400" /> Gestão de Mensagens
                 </h4>
                 <div className="space-y-4 text-slate-400 text-sm font-bold">
-                  <p>1. Se deixar o campo <span className="text-white">Para</span> vazio, todos os usuários do AuriLog receberão o alerta na Central de Alertas.</p>
-                  <p>2. Alertas <span className="text-rose-400 font-black">Urgentes</span> piscam para o motorista no sistema.</p>
-                  <p>3. Mensagens podem ser personalizadas por e-mail de conta cadastrada.</p>
+                  <p>• Notificações globais aparecem para todos os motoristas.</p>
+                  <p>• Notificações urgentes disparam alertas visuais no dashboard.</p>
+                  <p>• Utilize o e-mail exato do usuário para mensagens privadas.</p>
                 </div>
               </div>
             </div>
           </>
         ) : (
           <>
-            {/* Coluna Cadastro de Serviços na Estrada */}
             <div className="lg:col-span-5 bg-white p-8 rounded-[3rem] border shadow-sm">
               <h3 className="text-xl font-black mb-8 flex items-center gap-2 uppercase tracking-tight">
                 <Plus className="text-emerald-600" size={24} /> Novo Serviço na Estrada
@@ -216,21 +222,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh }) => {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Endereço (Texto)</label>
-                  <input placeholder="Ex: Rod. Washington Luís, KM 200" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" value={serviceForm.address} onChange={e => setServiceForm({...serviceForm, address: e.target.value})} />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Link de Localização (Google Maps)</label>
-                  <div className="relative">
-                    <input required placeholder="https://maps.app.goo.gl/..." className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none pl-12" value={serviceForm.location_url} onChange={e => setServiceForm({...serviceForm, location_url: e.target.value})} />
-                    <MapPin className="absolute left-4 top-4 text-slate-300" size={20} />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Destaques (Opcional)</label>
-                  <input placeholder="Ex: Pátio amplo, Comida caseira, 24h" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" value={serviceForm.description} onChange={e => setServiceForm({...serviceForm, description: e.target.value})} />
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Link Google Maps</label>
+                  <input required placeholder="https://maps.app.goo.gl/..." className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" value={serviceForm.location_url} onChange={e => setServiceForm({...serviceForm, location_url: e.target.value})} />
                 </div>
 
                 <button disabled={loading} type="submit" className="w-full py-5 bg-emerald-600 text-white rounded-2xl font-black uppercase text-sm shadow-xl flex items-center justify-center gap-3 active:scale-95 transition-all">
@@ -239,15 +232,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh }) => {
               </form>
             </div>
 
-            {/* Lista de Parceiros Cadastrados */}
             <div className="lg:col-span-7 bg-white p-8 rounded-[3rem] border shadow-sm overflow-hidden flex flex-col">
               <h3 className="text-xl font-black mb-8 flex items-center gap-2 uppercase tracking-tight">
-                <Store className="text-primary-600" size={24} /> Parceiros Ativos no AuriLog
+                <Store className="text-primary-600" size={24} /> Parceiros Ativos
               </h3>
               <div className="flex-1 overflow-y-auto space-y-4 max-h-[600px] pr-2 custom-scrollbar">
-                {services.length === 0 ? (
-                  <div className="text-center py-20 opacity-30">Nenhum serviço cadastrado.</div>
-                ) : services.map(s => (
+                {services.map(s => (
                   <div key={s.id} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 flex items-center justify-between group">
                     <div className="flex items-center gap-4">
                       <div className="p-3 bg-white rounded-2xl shadow-sm text-slate-400">

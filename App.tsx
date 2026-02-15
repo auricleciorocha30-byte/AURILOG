@@ -16,6 +16,9 @@ import { supabase } from './lib/supabase';
 import { offlineStorage } from './lib/offlineStorage';
 
 const App: React.FC = () => {
+  // Define se estamos no modo "Sistema Principal" ou "Admin" baseado na URL
+  const isUserMode = new URLSearchParams(window.location.search).get('mode') === 'user';
+
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -109,20 +112,32 @@ const App: React.FC = () => {
   }, [syncing, session]);
 
   const fetchData = async (forceCloud = false) => {
+    // Busca dados básicos do sistema (Serviços e Notificações) mesmo sem sessão se estiver no modo Admin
+    try {
+      if (navigator.onLine) {
+        const [notifRes, servRes] = await Promise.all([
+          supabase.from('notifications').select('*').order('created_at', { ascending: false }),
+          supabase.from('road_services').select('*').order('name', { ascending: true })
+        ]);
+        if (notifRes.data) setDbNotifications(notifRes.data);
+        if (servRes.data) setRoadServices(servRes.data);
+      }
+    } catch (e) {
+      console.log("Global data fetch failed");
+    }
+
     if (!session?.user) return;
     const userId = session.user.id;
     const userEmail = session.user.email;
 
     try {
       if (navigator.onLine) {
-        const [tripsRes, expRes, vehRes, mainRes, jornRes, notifRes, servRes] = await Promise.all([
+        const [tripsRes, expRes, vehRes, mainRes, jornRes] = await Promise.all([
           supabase.from('trips').select('*').eq('user_id', userId).order('date', { ascending: false }),
           supabase.from('expenses').select('*').eq('user_id', userId).order('date', { ascending: false }),
           supabase.from('vehicles').select('*').eq('user_id', userId).order('plate', { ascending: true }),
           supabase.from('maintenance').select('*').eq('user_id', userId).order('purchase_date', { ascending: false }),
-          supabase.from('jornada_logs').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
-          supabase.from('notifications').select('*').or(`target_user_email.is.null,target_user_email.eq.${userEmail}`).order('created_at', { ascending: false }),
-          supabase.from('road_services').select('*').order('name', { ascending: true })
+          supabase.from('jornada_logs').select('*').eq('user_id', userId).order('created_at', { ascending: false })
         ]);
 
         if (tripsRes.data) await offlineStorage.bulkSave('trips', tripsRes.data);
@@ -130,8 +145,6 @@ const App: React.FC = () => {
         if (vehRes.data) await offlineStorage.bulkSave('vehicles', vehRes.data);
         if (mainRes.data) await offlineStorage.bulkSave('maintenance', mainRes.data);
         if (jornRes.data) await offlineStorage.bulkSave('jornada_logs', jornRes.data);
-        if (notifRes.data) setDbNotifications(notifRes.data);
-        if (servRes.data) setRoadServices(servRes.data);
       }
 
       const [lTrips, lExp, lVeh, lMain, lJorn] = await Promise.all([
@@ -147,7 +160,7 @@ const App: React.FC = () => {
       setVehicles(lVeh);
       setMaintenance(lMain);
       setJornadaLogs(lJorn);
-    } catch (err) { console.error("Data fetch error:", err); }
+    } catch (err) { console.error("User data fetch error:", err); }
   };
 
   const activeNotifications = useMemo(() => {
@@ -156,7 +169,10 @@ const App: React.FC = () => {
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
     dbNotifications.forEach(n => {
-      list.push({ ...n, category: n.category as any, date: 'Alerta Admin' });
+      // Filtra notificações direcionadas se houver sessão
+      if (!n.target_user_email || (session?.user?.email === n.target_user_email)) {
+        list.push({ ...n, category: n.category as any, date: 'Alerta Admin' });
+      }
     });
 
     maintenance.forEach(m => {
@@ -172,7 +188,7 @@ const App: React.FC = () => {
     });
 
     return list.filter(n => !dismissedNotificationIds.includes(n.id));
-  }, [trips, expenses, maintenance, vehicles, dbNotifications, dismissedNotificationIds]);
+  }, [trips, expenses, maintenance, vehicles, dbNotifications, dismissedNotificationIds, session]);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -189,7 +205,10 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!loading && session?.user) { fetchData(); if (isOnline) syncData(); }
+    if (!loading) { 
+      fetchData(); 
+      if (session?.user && isOnline) syncData(); 
+    }
   }, [session, loading, isOnline]);
 
   const handleAction = async (table: string, data: any, action: 'insert' | 'update' | 'delete' = 'insert') => {
@@ -215,17 +234,41 @@ const App: React.FC = () => {
   };
 
   const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault(); setError(''); setSuccessMsg(''); setAuthLoading(true);
+    e.preventDefault();
+    setError('');
+    setSuccessMsg('');
+    setAuthLoading(true);
+
     try {
       if (isPasswordRecovery) {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+        const { error } = await supabase.auth.resetPasswordForEmail(email, { 
+          redirectTo: window.location.origin + '?mode=user' 
+        });
         if (error) throw error;
         setSuccessMsg("E-mail de recuperação enviado!");
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
+        const { data, error } = await supabase.auth.signInWithPassword({ 
+          email: email.trim(), 
+          password: password 
+        });
+        
+        if (error) {
+          if (error.message.includes("Invalid login credentials")) {
+            throw new Error("E-mail ou senha incorretos.");
+          }
+          throw error;
+        }
+
+        if (data.session) {
+          setSession(data.session);
+          setSuccessMsg("Login realizado com sucesso!");
+        }
       }
-    } catch (err: any) { setError(err.message); } finally { setAuthLoading(false); }
+    } catch (err: any) {
+      setError(err.message || "Erro ao tentar realizar o login.");
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
   const formatTime = (s: number) => {
@@ -239,13 +282,23 @@ const App: React.FC = () => {
 
   if (loading) return <div className="h-screen flex items-center justify-center bg-slate-950"><Loader2 className="animate-spin text-primary-500" size={48} /></div>;
 
+  // Se NÃO estiver no modo usuário, mostra o ADMIN primeiro (Entry Point)
+  if (!isUserMode) {
+    return (
+      <div className="min-h-screen bg-slate-50 overflow-y-auto">
+        <AdminPanel onRefresh={fetchData} />
+      </div>
+    );
+  }
+
+  // Se ESTIVER no modo usuário mas não logado, mostra o LOGIN
   if (!session) return (
     <div className="min-h-screen w-full flex items-center justify-center bg-slate-900 p-4">
       <div className="w-full max-w-md bg-white rounded-[3rem] shadow-2xl p-10 animate-fade-in border border-white/10">
         <div className="flex flex-col items-center mb-10">
           <div className="bg-primary-600 p-4 rounded-[1.5rem] shadow-lg mb-4 text-white"><Truck size={40} /></div>
           <h1 className="text-4xl font-black text-slate-900 tracking-tighter uppercase leading-none text-center">AuriLog</h1>
-          <p className="text-slate-400 font-bold text-xs mt-2 uppercase tracking-widest text-center">{isPasswordRecovery ? 'Recuperar Senha' : 'Gestão Profissional de Fretes'}</p>
+          <p className="text-slate-400 font-bold text-xs mt-2 uppercase tracking-widest text-center">{isPasswordRecovery ? 'Recuperar Senha' : 'Acesso ao Sistema'}</p>
         </div>
         <form onSubmit={handleAuth} className="space-y-5">
           <div className="space-y-1.5">
@@ -268,10 +321,17 @@ const App: React.FC = () => {
             {isPasswordRecovery ? 'Enviar E-mail' : 'Entrar no Sistema'}
           </button>
         </form>
+        <button 
+          onClick={() => window.location.href = window.location.origin} 
+          className="w-full mt-6 text-[10px] font-black uppercase text-slate-400 hover:text-slate-600 transition-all flex items-center justify-center gap-2"
+        >
+          <Undo2 size={12}/> Voltar para o Painel Admin
+        </button>
       </div>
     </div>
   );
 
+  // Se ESTIVER logado e no modo usuário, mostra o DASHBOARD
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden relative">
       <aside className={`fixed md:relative z-[200] w-64 h-full bg-slate-900 text-slate-300 p-4 flex flex-col transition-transform duration-300 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
@@ -288,9 +348,6 @@ const App: React.FC = () => {
           <MenuBtn icon={Calculator} label="Frete ANTT" active={currentView === AppView.CALCULATOR} onClick={() => {setCurrentView(AppView.CALCULATOR); setIsMobileMenuOpen(false);}} />
           <MenuBtn icon={Timer} label="Jornada" active={currentView === AppView.JORNADA} onClick={() => {setCurrentView(AppView.JORNADA); setIsMobileMenuOpen(false);}} />
           <MenuBtn icon={MapPinHouse} label="Serviços Estrada" active={currentView === AppView.STATIONS} onClick={() => {setCurrentView(AppView.STATIONS); setIsMobileMenuOpen(false);}} />
-          <div className="pt-4 border-t border-white/5 my-2">
-            <MenuBtn icon={ShieldAlert} label="Painel Admin" active={currentView === AppView.ADMIN} onClick={() => {setCurrentView(AppView.ADMIN); setIsMobileMenuOpen(false);}} />
-          </div>
         </nav>
         <div className="pt-4 border-t border-white/5 mt-auto pb-12">
           <button onClick={async () => { await supabase.auth.signOut(); window.location.reload(); }} className="w-full flex items-center gap-3 px-6 py-4 text-rose-400 font-black uppercase text-xs hover:bg-white/5 rounded-2xl transition-all"><LogOut size={18} /> Sair da Conta</button>
@@ -314,9 +371,8 @@ const App: React.FC = () => {
           {currentView === AppView.VEHICLES && <VehicleManager vehicles={vehicles} onAddVehicle={(v) => handleAction('vehicles', v, 'insert')} onUpdateVehicle={(id, v) => handleAction('vehicles', { ...v, id }, 'update')} onDeleteVehicle={(id) => handleAction('vehicles', { id }, 'delete')} isSaving={isSaving} />}
           {currentView === AppView.MAINTENANCE && <MaintenanceManager maintenance={maintenance} vehicles={vehicles} onAddMaintenance={(m) => handleAction('maintenance', m, 'insert')} onDeleteMaintenance={(id) => handleAction('maintenance', { id }, 'delete')} isSaving={isSaving} />}
           {currentView === AppView.CALCULATOR && <FreightCalculator />}
-          {currentView === AppView.JORNADA && <JornadaManager mode={jornadaMode} startTime={jornadaStartTime} currentTime={jornadaElapsed} logs={jornadaLogs} setMode={setJornadaMode} setStartTime={setJornadaStartTime} onSaveLog={(l) => handleAction('jornada_logs', l, 'insert')} onDeleteLog={(id) => handleAction('jornada_logs', { id }, 'delete')} onClearHistory={async () => { await supabase.from('jornada_logs').delete().eq('user_id', session.user.id); setJornadaLogs([]); }} addGlobalNotification={() => {}} isSaving={isSaving} />}
+          {currentView === AppView.JORNADA && <JornadaManager mode={jornadaMode} startTime={jornadaStartTime} currentTime={jornadaElapsed} logs={jornadaLogs} setMode={setJornadaMode} setStartTime={setJornadaStartTime} onSaveLog={(l) => handleAction('jornada_logs', l, 'insert')} onDeleteLog={(id) => handleAction('jornada_logs', { id }, 'delete')} onClearHistory={async () => { if(session?.user) { await supabase.from('jornada_logs').delete().eq('user_id', session.user.id); setJornadaLogs([]); } }} addGlobalNotification={() => {}} isSaving={isSaving} />}
           {currentView === AppView.STATIONS && <StationLocator roadServices={roadServices} />}
-          {currentView === AppView.ADMIN && <AdminPanel onRefresh={fetchData} />}
           {currentView === AppView.DASHBOARD && <Dashboard trips={trips} expenses={expenses} maintenance={maintenance} vehicles={vehicles} onSetView={setCurrentView} />}
         </div>
       </main>
