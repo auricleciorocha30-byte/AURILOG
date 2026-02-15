@@ -50,7 +50,39 @@ const App: React.FC = () => {
   const [jornadaLogs, setJornadaLogs] = useState<JornadaLog[]>([]);
   const [dbNotifications, setDbNotifications] = useState<DbNotification[]>([]);
   const [roadServices, setRoadServices] = useState<RoadService[]>([]);
-  const [dismissedNotificationIds, setDismissedNotificationIds] = useState<string[]>([]);
+  const [dismissedNotificationIds, setDismissedNotificationIds] = useState<string[]>(() => {
+    const saved = localStorage.getItem('aurilog_dismissed_notifications');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // Salvar descartes no localStorage
+  useEffect(() => {
+    localStorage.setItem('aurilog_dismissed_notifications', JSON.stringify(dismissedNotificationIds));
+  }, [dismissedNotificationIds]);
+
+  // Real-time para notificações
+  useEffect(() => {
+    const channel = supabase
+      .channel('schema-db-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'notifications' },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            setDbNotifications(prev => [payload.new as DbNotification, ...prev]);
+          } else if (payload.eventType === 'DELETE') {
+            setDbNotifications(prev => prev.filter(n => n.id !== payload.old.id));
+          } else if (payload.eventType === 'UPDATE') {
+            setDbNotifications(prev => prev.map(n => n.id === payload.new.id ? (payload.new as DbNotification) : n));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   useEffect(() => {
     window.addEventListener('beforeinstallprompt', (e) => {
@@ -322,14 +354,14 @@ const App: React.FC = () => {
   if (!isUserMode && !isAdminAuthenticated) {
     return (
       <div className="min-h-screen w-full flex items-center justify-center bg-slate-950 p-6">
-        <div className="w-full max-w-lg bg-slate-900 rounded-[3.5rem] shadow-2xl p-12 border border-slate-800 animate-fade-in">
-           <div className="flex flex-col items-center mb-10 text-center">
+        <div className="w-full max-w-lg bg-slate-900 rounded-[3.5rem] shadow-2xl p-12 border border-slate-800 animate-fade-in text-center">
+           <div className="flex flex-col items-center mb-10">
               <div className="bg-primary-600 p-5 rounded-[1.8rem] shadow-xl mb-6 text-white"><ShieldAlert size={48} /></div>
               <h2 className="text-3xl font-black text-white uppercase tracking-tighter">Painel de Controle</h2>
               <p className="text-slate-500 font-bold text-xs mt-2 uppercase tracking-widest">Acesso Restrito ao Administrador</p>
            </div>
            
-           <form onSubmit={handleAuth} className="space-y-6">
+           <form onSubmit={handleAuth} className="space-y-6 text-left">
               <div className="space-y-2">
                  <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Usuário Master</label>
                  <div className="relative">
