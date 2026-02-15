@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { GoogleGenAI } from "@google/genai";
-import { Fuel, MapPin, Loader2, Navigation, Search, Wrench, Hammer, AlertTriangle, Map as MapIcon, X, ExternalLink, ChevronRight, MapPinHouse, Radar, Truck, Utensils, Store, ShieldCheck } from 'lucide-react';
+import { Fuel, MapPin, Loader2, Navigation, Search, Wrench, Hammer, AlertTriangle, Map as MapIcon, X, ExternalLink, ChevronRight, MapPinHouse, Radar, Truck, Utensils, Store, ShieldCheck, MapPinned } from 'lucide-react';
 import { RoadService } from '../types';
 
 interface StationLocatorProps {
@@ -12,19 +12,19 @@ export const StationLocator: React.FC<StationLocatorProps> = ({ roadServices = [
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [services, setServices] = useState<any[]>([]);
-  const [selectedType, setSelectedType] = useState<'stations' | 'tire_repair' | 'mechanic' | 'restaurants'>('stations');
+  const [selectedType, setSelectedType] = useState<string>('Posto de Combustível');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [manualLocation, setManualLocation] = useState("");
   const [activeService, setActiveService] = useState<any | null>(null);
 
-  // Filtra os parceiros oficiais cadastrados pelo admin por categoria
-  const officialPartners = roadServices.filter(s => {
-    if (selectedType === 'stations') return s.type === 'stations';
-    if (selectedType === 'restaurants') return s.type === 'restaurants';
-    if (selectedType === 'mechanic') return s.type === 'mechanic' || s.type === 'store';
-    if (selectedType === 'tire_repair') return s.type === 'tire_repair';
-    return false;
-  });
+  // Categorias dinâmicas baseadas nos serviços cadastrados ou padrões
+  const categories = Array.from(new Set([
+    'Posto de Combustível', 'Restaurante', 'Oficina Diesel', 'Borracharia',
+    ...roadServices.map(s => s.type)
+  ]));
+
+  // Filtra os parceiros oficiais
+  const officialPartners = roadServices.filter(s => s.type === selectedType);
 
   const getGeolocation = (): Promise<{ lat: number; lng: number }> => {
     return new Promise((resolve, reject) => {
@@ -42,8 +42,6 @@ export const StationLocator: React.FC<StationLocatorProps> = ({ roadServices = [
   };
 
   const findServices = async (isManual = false) => {
-    if (isManual && !manualLocation.trim()) return;
-
     setLoading(true);
     setErrorMessage(null);
     setServices([]);
@@ -68,18 +66,8 @@ export const StationLocator: React.FC<StationLocatorProps> = ({ roadServices = [
         locationQuery = `em ${manualLocation}, Brasil`;
       }
 
-      setStatusMessage("Consultando Google Maps e IA...");
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      
-      let serviceLabel = "";
-      switch(selectedType) {
-        case 'stations': serviceLabel = "Postos de combustível"; break;
-        case 'tire_repair': serviceLabel = "Borracharias pesadas"; break;
-        case 'mechanic': serviceLabel = "Mecânicas diesel"; break;
-        case 'restaurants': serviceLabel = "Restaurantes de beira de estrada"; break;
-      }
-
-      const prompt = `Encontre ${serviceLabel} confiáveis com pátio para caminhões ${locationQuery}.`;
+      const prompt = `Encontre ${selectedType} confiáveis com pátio para caminhões ${locationQuery}.`;
 
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
@@ -101,48 +89,56 @@ export const StationLocator: React.FC<StationLocatorProps> = ({ roadServices = [
       if (mapsResults.length > 0) {
         setServices(mapsResults);
       } else {
-        setErrorMessage("Nenhum local adicional encontrado nesta área.");
+        setErrorMessage("Nenhum local adicional encontrado.");
       }
     } catch (err: any) {
-      setErrorMessage("Erro ao buscar serviços via IA.");
+      setErrorMessage("Erro ao buscar via radar IA.");
     } finally {
       setLoading(false);
       setStatusMessage("");
     }
   };
 
+  const openRoute = (dest: string) => {
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}`;
+    window.open(url, '_blank');
+  };
+
   const getIcon = (type: string) => {
-    switch(type) {
-      case 'stations': return <Fuel size={24}/>;
-      case 'restaurants': return <Utensils size={24}/>;
-      case 'mechanic': return <Wrench size={24}/>;
-      case 'tire_repair': return <Hammer size={24}/>;
-      default: return <Store size={24}/>;
-    }
+    if (type.includes('Posto')) return <Fuel size={24}/>;
+    if (type.includes('Restaurante')) return <Utensils size={24}/>;
+    if (type.includes('Oficina')) return <Wrench size={24}/>;
+    if (type.includes('Borracharia')) return <Hammer size={24}/>;
+    return <Store size={24}/>;
   };
 
   return (
-    <div className="max-w-[1400px] mx-auto space-y-6 pb-12 animate-fade-in">
+    <div className="max-w-[1400px] mx-auto space-y-6 pb-20 animate-fade-in px-4">
       {/* Radar de Busca */}
-      <div className="bg-slate-900 p-6 md:p-10 rounded-[3rem] text-white shadow-2xl mx-2 border border-slate-800 relative overflow-hidden">
-        <div className="absolute top-0 right-0 p-8 opacity-10">
-          <Radar size={120} className="animate-pulse" />
+      <div className="bg-slate-900 p-8 md:p-12 rounded-[3.5rem] text-white shadow-2xl border border-slate-800 relative overflow-hidden">
+        <div className="absolute top-0 right-0 p-12 opacity-5">
+          <Radar size={180} className="animate-pulse" />
         </div>
         
-        <div className="relative z-10">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
+        <div className="relative z-10 space-y-10">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
             <div>
-              <h2 className="text-3xl font-black tracking-tighter uppercase flex items-center gap-2">
-                <Truck className="text-primary-500" /> Radar da Estrada
+              <h2 className="text-4xl font-black tracking-tighter uppercase flex items-center gap-3">
+                <MapPinned className="text-primary-500" size={40} /> Radar da Estrada
               </h2>
-              <p className="text-slate-400 text-sm font-bold uppercase tracking-widest mt-1">Serviços e Parceiros Oficiais AuriLog</p>
+              <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-2">Localize Parceiros Oficiais e Serviços via IA</p>
             </div>
             
             <div className="flex flex-wrap gap-2">
-              <ServiceTab active={selectedType === 'stations'} icon={Fuel} label="Postos" onClick={() => setSelectedType('stations')} />
-              <ServiceTab active={selectedType === 'restaurants'} icon={Utensils} label="Comida" onClick={() => setSelectedType('restaurants')} />
-              <ServiceTab active={selectedType === 'mechanic'} icon={Wrench} label="Mecânica" onClick={() => setSelectedType('mechanic')} />
-              <ServiceTab active={selectedType === 'tire_repair'} icon={Hammer} label="Pneus" onClick={() => setSelectedType('tire_repair')} />
+              {categories.slice(0, 5).map(cat => (
+                <button 
+                  key={cat}
+                  onClick={() => setSelectedType(cat)}
+                  className={`px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-wider transition-all ${selectedType === cat ? 'bg-primary-600 text-white shadow-lg scale-105' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
+                >
+                  {cat}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -150,112 +146,128 @@ export const StationLocator: React.FC<StationLocatorProps> = ({ roadServices = [
             <div className="flex-1 relative">
               <input 
                 type="text" 
-                placeholder="Ex: Rodovia Fernão Dias, KM 40..." 
-                className="w-full p-5 bg-slate-800 border border-slate-700 rounded-2xl font-bold text-white outline-none focus:ring-2 focus:ring-primary-500 placeholder:text-slate-600 transition-all"
+                placeholder="Ex: Rodovia Anhanguera, KM 100..." 
+                className="w-full p-6 bg-slate-800 border border-slate-700 rounded-3xl font-bold text-white outline-none focus:ring-4 focus:ring-primary-500/30 placeholder:text-slate-600 transition-all text-lg"
                 value={manualLocation}
                 onChange={e => setManualLocation(e.target.value)}
               />
-              <Search className="absolute right-5 top-5 text-slate-600" size={24} />
+              <Search className="absolute right-6 top-6 text-slate-600" size={28} />
             </div>
-            <button onClick={() => findServices(false)} disabled={loading} className="bg-primary-600 text-white px-8 py-5 rounded-2xl font-black text-lg flex items-center justify-center gap-3 shadow-xl active:scale-95 transition-all">
-              {loading ? <Loader2 className="animate-spin" /> : <Radar size={24} />} Localizar Agora
+            <button onClick={() => findServices(manualLocation !== "")} disabled={loading} className="bg-primary-600 text-white px-10 py-6 rounded-3xl font-black text-lg flex items-center justify-center gap-3 shadow-xl active:scale-95 transition-all">
+              {loading ? <Loader2 className="animate-spin" /> : <Radar size={24} />} Escanear Área
             </button>
           </div>
-          {statusMessage && <p className="mt-4 text-primary-400 text-[10px] font-black uppercase tracking-widest animate-pulse">{statusMessage}</p>}
+          {statusMessage && <p className="text-primary-400 text-[10px] font-black uppercase tracking-[0.2em] animate-pulse">{statusMessage}</p>}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 px-2">
-        {/* Resultados */}
-        <div className="lg:col-span-4 space-y-4 max-h-[700px] overflow-y-auto pr-2 custom-scrollbar">
-          {/* Sessão Parceiros Oficiais (DB) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        {/* Lista de Resultados */}
+        <div className="lg:col-span-4 space-y-6 max-h-[800px] overflow-y-auto pr-2 custom-scrollbar">
           {officialPartners.length > 0 && (
-            <div className="space-y-3">
-              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-4 flex items-center gap-2">
-                <ShieldCheck size={14} className="text-emerald-500" /> Parceiros AuriLog
+            <div className="space-y-4">
+              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-4 flex items-center gap-2">
+                <ShieldCheck size={14} className="text-emerald-500" /> Parceiros Recomendados
               </h3>
               {officialPartners.map(s => (
-                <div key={s.id} onClick={() => setActiveService({...s, title: s.name, uri: s.location_url, isOfficial: true})} className={`p-6 rounded-[2.5rem] border-2 cursor-pointer transition-all flex items-center justify-between group relative overflow-hidden ${activeService?.id === s.id ? 'bg-emerald-600 border-emerald-600 text-white shadow-2xl scale-[1.02]' : 'bg-white border-emerald-100 hover:border-emerald-300'}`}>
+                <div 
+                  key={s.id} 
+                  onClick={() => setActiveService({...s, title: s.name, uri: s.location_url, isOfficial: true})}
+                  className={`p-6 rounded-[3rem] border-2 cursor-pointer transition-all flex flex-col gap-4 group relative overflow-hidden ${activeService?.id === s.id ? 'bg-emerald-600 border-emerald-600 text-white shadow-2xl scale-[1.02]' : 'bg-white border-emerald-100 hover:border-emerald-300'}`}
+                >
                   <div className="flex gap-4 items-center">
-                    <div className={`p-4 rounded-2xl ${activeService?.id === s.id ? 'bg-white/20' : 'bg-emerald-50 text-emerald-600'}`}>
+                    <div className={`p-4 rounded-2xl shrink-0 ${activeService?.id === s.id ? 'bg-white/20' : 'bg-emerald-50 text-emerald-600'}`}>
                       {getIcon(s.type)}
                     </div>
-                    <div>
-                      <h4 className="font-black text-base truncate pr-2">{s.name}</h4>
-                      <p className={`text-[10px] font-bold ${activeService?.id === s.id ? 'text-white/70' : 'text-slate-400'}`}>{s.description || 'Parceiro Recomendado'}</p>
+                    <div className="overflow-hidden">
+                      <h4 className="font-black text-lg truncate pr-2">{s.name}</h4>
+                      <p className={`text-[10px] font-bold uppercase truncate ${activeService?.id === s.id ? 'text-white/70' : 'text-slate-400'}`}>{s.address}</p>
                     </div>
                   </div>
+                  
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); openRoute(s.address); }}
+                    className={`w-full py-4 rounded-2xl font-black text-[10px] uppercase flex items-center justify-center gap-2 transition-all ${activeService?.id === s.id ? 'bg-white text-emerald-700' : 'bg-slate-900 text-white'}`}
+                  >
+                    <Navigation size={14} /> Traçar Rota GPS
+                  </button>
                 </div>
               ))}
             </div>
           )}
 
-          {/* Sessão Resultados IA/Maps */}
-          <div className="space-y-3 pt-4">
-             {services.length > 0 && (
-               <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-4">Resultados Radar</h3>
-             )}
-             {services.map((s, i) => (
-                <div key={i} onClick={() => setActiveService(s)} className={`p-6 rounded-[2.5rem] border cursor-pointer transition-all flex items-center justify-between group ${activeService?.uri === s.uri ? 'bg-primary-600 border-primary-600 text-white shadow-2xl scale-[1.02]' : 'bg-white border-slate-200 hover:border-primary-200'}`}>
-                  <div className="flex gap-4 items-center">
-                    <div className={`p-4 rounded-2xl ${activeService?.uri === s.uri ? 'bg-white/20' : 'bg-slate-100 text-slate-500'}`}>
-                      {getIcon(selectedType)}
-                    </div>
-                    <div>
-                      <h4 className="font-black text-base truncate pr-2">{s.title}</h4>
-                      <p className={`text-[10px] font-bold ${activeService?.uri === s.uri ? 'text-white/70' : 'text-slate-400'}`}>Localização no Mapa</p>
+          {services.length > 0 && (
+            <div className="space-y-4 pt-4">
+               <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-4">Localizados via Radar IA</h3>
+               {services.map((s, i) => (
+                  <div 
+                    key={i} 
+                    onClick={() => setActiveService(s)}
+                    className={`p-6 rounded-[2.5rem] border-2 cursor-pointer transition-all flex items-center justify-between group ${activeService?.uri === s.uri ? 'bg-primary-600 border-primary-600 text-white shadow-2xl scale-[1.02]' : 'bg-white border-slate-200 hover:border-primary-300'}`}
+                  >
+                    <div className="flex gap-4 items-center overflow-hidden">
+                      <div className={`p-4 rounded-2xl shrink-0 ${activeService?.uri === s.uri ? 'bg-white/20' : 'bg-slate-100 text-slate-500'}`}>
+                        {getIcon(selectedType)}
+                      </div>
+                      <div className="overflow-hidden">
+                        <h4 className="font-black text-base truncate pr-2">{s.title}</h4>
+                        <p className={`text-[10px] font-bold uppercase ${activeService?.uri === s.uri ? 'text-white/70' : 'text-slate-400'}`}>Localização Google</p>
+                      </div>
                     </div>
                   </div>
-                </div>
-             ))}
-          </div>
-          
-          {!loading && officialPartners.length === 0 && services.length === 0 && (
-            <div className="text-center py-20 bg-white rounded-[3rem] border-2 border-dashed border-slate-100 opacity-60">
-               <MapPinHouse size={48} className="mx-auto text-slate-200 mb-2" />
-               <p className="text-[10px] font-black text-slate-400 uppercase">Use o radar para buscar locais</p>
+               ))}
+            </div>
+          )}
+
+          {officialPartners.length === 0 && services.length === 0 && !loading && (
+            <div className="text-center py-24 bg-white rounded-[3.5rem] border-2 border-dashed border-slate-100 opacity-60">
+               <MapPinHouse size={64} className="mx-auto text-slate-200 mb-4" />
+               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nenhum serviço selecionado</p>
             </div>
           )}
         </div>
 
-        {/* Mapa Detalhado */}
-        <div className="lg:col-span-8 h-[700px] bg-white rounded-[3rem] border border-slate-200 overflow-hidden relative shadow-sm flex flex-col">
+        {/* Visualização do Mapa */}
+        <div className="lg:col-span-8 h-[800px] bg-white rounded-[4rem] border-2 border-slate-100 overflow-hidden relative shadow-sm flex flex-col">
           {activeService ? (
             <>
-              <div className="bg-white border-b p-6 flex items-center justify-between z-10">
-                <div className="flex items-center gap-4">
-                   <div className={`p-3 rounded-xl ${activeService.isOfficial ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-400'}`}>
-                     {activeService.isOfficial ? <ShieldCheck /> : <MapPin />}
+              <div className="bg-white border-b p-8 flex items-center justify-between z-10">
+                <div className="flex items-center gap-5 overflow-hidden">
+                   <div className={`p-4 rounded-2xl shrink-0 ${activeService.isOfficial ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-400'}`}>
+                     {activeService.isOfficial ? <ShieldCheck size={32} /> : <MapPin size={32} />}
                    </div>
-                   <div>
-                     <h3 className="font-black text-slate-900 text-xl">{activeService.title}</h3>
-                     {activeService.isOfficial && <p className="text-emerald-600 text-[10px] font-black uppercase tracking-widest">Parceiro Oficial AuriLog</p>}
+                   <div className="overflow-hidden">
+                     <h3 className="font-black text-slate-900 text-2xl truncate">{activeService.title}</h3>
+                     <p className="text-slate-400 text-[10px] font-bold uppercase truncate">{activeService.address || 'Localização no Mapa'}</p>
                    </div>
                 </div>
-                <button onClick={() => window.open(activeService.uri, '_blank')} className="px-6 py-3 bg-slate-900 text-white rounded-xl font-black text-xs uppercase flex items-center gap-2">
-                  <ExternalLink size={16}/> Abrir Maps
+                <button onClick={() => window.open(activeService.uri, '_blank')} className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase flex items-center gap-2 shrink-0 ml-4 hover:bg-black transition-all">
+                  <ExternalLink size={18}/> Maps
                 </button>
               </div>
-              <div className="flex-1 bg-slate-100">
+              <div className="flex-1 bg-slate-50">
                 <iframe 
                   title="Mapa"
                   className="w-full h-full border-0"
-                  src={`https://www.google.com/maps?q=${encodeURIComponent(activeService.title)}&output=embed`}
+                  src={`https://www.google.com/maps?q=${encodeURIComponent(activeService.address || activeService.title)}&output=embed`}
                   allowFullScreen
                   loading="lazy"
                 ></iframe>
               </div>
-              <div className="p-8 absolute bottom-0 left-0 right-0 pointer-events-none">
-                <button onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(activeService.title)}`, '_blank')} className="w-full md:w-auto md:px-12 py-5 bg-slate-900 text-white rounded-[2rem] font-black text-xl flex items-center justify-center gap-4 shadow-2xl pointer-events-auto mx-auto active:scale-95 transition-all">
-                  <Navigation size={28} className="fill-white" /> INICIAR NAVEGAÇÃO GPS
+              <div className="p-10 absolute bottom-0 left-0 right-0 pointer-events-none flex justify-center">
+                <button 
+                  onClick={() => openRoute(activeService.address || activeService.title)} 
+                  className="w-full md:w-auto md:px-16 py-6 bg-slate-900 text-white rounded-[2.5rem] font-black text-2xl flex items-center justify-center gap-5 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.3)] pointer-events-auto active:scale-95 transition-all"
+                >
+                  <Navigation size={32} className="fill-white" /> INICIAR GPS
                 </button>
               </div>
             </>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
-              <Radar size={100} className="text-slate-100 mb-6" />
-              <h3 className="text-slate-400 font-black text-2xl uppercase tracking-tighter">Radar em Standby</h3>
-              <p className="text-slate-300 font-bold mt-2 max-w-sm">Selecione um local na lista lateral ou inicie uma busca por radar.</p>
+            <div className="flex-1 flex flex-col items-center justify-center p-20 text-center">
+              <Radar size={120} className="text-slate-100 mb-8" />
+              <h3 className="text-slate-400 font-black text-3xl uppercase tracking-tighter">Radar em Repouso</h3>
+              <p className="text-slate-300 font-bold mt-4 max-w-sm text-lg">Selecione um parceiro ou use o radar para encontrar serviços na sua rota.</p>
             </div>
           )}
         </div>
@@ -265,7 +277,7 @@ export const StationLocator: React.FC<StationLocatorProps> = ({ roadServices = [
 };
 
 const ServiceTab = ({ active, icon: Icon, label, onClick }: any) => (
-  <button onClick={onClick} className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-black text-xs transition-all tracking-tighter uppercase ${active ? 'bg-primary-600 text-white shadow-lg scale-105' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>
-    <Icon size={18} /> <span>{label}</span>
+  <button onClick={onClick} className={`flex items-center gap-3 px-6 py-4 rounded-2xl font-black text-xs transition-all tracking-widest uppercase ${active ? 'bg-primary-600 text-white shadow-xl scale-105' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>
+    <Icon size={20} /> <span>{label}</span>
   </button>
 );
