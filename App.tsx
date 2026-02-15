@@ -288,6 +288,12 @@ const App: React.FC = () => {
     }
   };
 
+  const handleAdminLogout = async () => {
+    await supabase.auth.signOut();
+    setIsAdminAuthenticated(false);
+    window.location.reload();
+  };
+
   if (loading) return <div className="h-screen flex items-center justify-center bg-slate-950"><Loader2 className="animate-spin text-primary-500" size={48} /></div>;
 
   // LOGIN ADMINISTRATIVO (Caso não esteja autenticado como Admin)
@@ -325,10 +331,6 @@ const App: React.FC = () => {
                  Autenticar Painel
               </button>
            </form>
-           
-           <button onClick={() => window.location.href = window.location.origin + '?mode=user'} className="w-full mt-8 text-[10px] font-black uppercase text-slate-600 hover:text-slate-400 transition-all flex items-center justify-center gap-2">
-              <Undo2 size={12}/> Voltar ao Sistema de Viagens
-           </button>
         </div>
       </div>
     );
@@ -338,7 +340,7 @@ const App: React.FC = () => {
   if (!isUserMode && isAdminAuthenticated) {
     return (
       <div className="min-h-screen bg-slate-50 overflow-y-auto">
-        <AdminPanel onRefresh={fetchData} />
+        <AdminPanel onRefresh={fetchData} onLogout={handleAdminLogout} />
       </div>
     );
   }
@@ -373,9 +375,6 @@ const App: React.FC = () => {
             {isPasswordRecovery ? 'Enviar E-mail' : 'Entrar no Sistema'}
           </button>
         </form>
-        <button onClick={() => window.location.href = window.location.origin} className="w-full mt-6 text-[10px] font-black uppercase text-slate-400 hover:text-slate-600 transition-all flex items-center justify-center gap-2">
-           Acesso Administrativo
-        </button>
       </div>
     </div>
   );

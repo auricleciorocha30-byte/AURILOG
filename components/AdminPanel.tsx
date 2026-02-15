@@ -1,14 +1,15 @@
 
 import React, { useState, useEffect } from 'react';
-import { Send, Bell, MapPin, Loader2, ShieldAlert, Trash2, CheckCircle2, Store, Fuel, Wrench, Hammer, User, Mail, Plus, ExternalLink, RefreshCcw, MapPinHouse, Utensils, Edit2, Tag, X, History, MessageSquareQuote } from 'lucide-react';
+import { Send, Bell, MapPin, Loader2, ShieldAlert, Trash2, CheckCircle2, Store, Fuel, Wrench, Hammer, User, Mail, Plus, ExternalLink, RefreshCcw, MapPinHouse, Utensils, Edit2, Tag, X, History, MessageSquareQuote, LogOut } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { RoadService, DbNotification } from '../types';
 
 interface AdminPanelProps {
   onRefresh: () => void;
+  onLogout: () => void;
 }
 
-export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh }) => {
+export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) => {
   const [activeTab, setActiveTab] = useState<'ALERTS' | 'SERVICES' | 'CATEGORIES'>('ALERTS');
   const [loading, setLoading] = useState(false);
   const [services, setServices] = useState<RoadService[]>([]);
@@ -186,9 +187,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh }) => {
             <ShieldAlert size={16} className="text-primary-600" /> AuriLog Control Center
           </p>
         </div>
-        <button onClick={() => window.open(window.location.origin + '?mode=user', '_blank')} className="flex items-center gap-2 px-8 py-5 bg-primary-600 text-white rounded-2xl font-black text-xs uppercase shadow-xl hover:bg-primary-700 transition-all active:scale-95">
-          <ExternalLink size={20} /> Abrir Sistema Principal
-        </button>
+        <div className="flex gap-3 w-full md:w-auto">
+          <button onClick={() => window.open(window.location.origin + '?mode=user', '_blank')} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-8 py-5 bg-white border-2 border-slate-100 text-slate-600 rounded-2xl font-black text-xs uppercase hover:border-primary-500 hover:text-primary-600 transition-all active:scale-95">
+            <ExternalLink size={20} /> Abrir Sistema
+          </button>
+          <button onClick={onLogout} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-8 py-5 bg-rose-600 text-white rounded-2xl font-black text-xs uppercase shadow-xl hover:bg-rose-700 transition-all active:scale-95">
+            <LogOut size={20} /> Sair
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}
