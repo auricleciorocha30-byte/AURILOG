@@ -1,0 +1,7 @@
+{
+  "name": "AuriLog com painel ",
+  "description": "Uma plataforma inteligente para caminhoneiros e gestores de frota. Gerencie viagens, despesas e lucros, planeje rotas e localize serviços em tempo real.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
