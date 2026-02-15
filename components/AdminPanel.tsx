@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { Send, Bell, MapPin, Loader2, ShieldAlert, Trash2, CheckCircle2, Store, Fuel, Wrench, Hammer, User, Mail, Plus, ExternalLink, RefreshCcw, MapPinHouse, Utensils, Edit2, Tag, X } from 'lucide-react';
+import { Send, Bell, MapPin, Loader2, ShieldAlert, Trash2, CheckCircle2, Store, Fuel, Wrench, Hammer, User, Mail, Plus, ExternalLink, RefreshCcw, MapPinHouse, Utensils, Edit2, Tag, X, History, MessageSquareQuote } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { RoadService } from '../types';
+import { RoadService, DbNotification } from '../types';
 
 interface AdminPanelProps {
   onRefresh: () => void;
@@ -12,6 +12,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh }) => {
   const [activeTab, setActiveTab] = useState<'ALERTS' | 'SERVICES' | 'CATEGORIES'>('ALERTS');
   const [loading, setLoading] = useState(false);
   const [services, setServices] = useState<RoadService[]>([]);
+  const [sentNotifications, setSentNotifications] = useState<DbNotification[]>([]);
   const [categories, setCategories] = useState<string[]>(['Posto de Combustível', 'Restaurante', 'Oficina Diesel', 'Borracharia', 'Loja de Peças']);
   const [newCategory, setNewCategory] = useState('');
   
@@ -39,7 +40,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh }) => {
   useEffect(() => {
     fetchServices();
     fetchCategories();
+    fetchNotifications();
   }, []);
+
+  const fetchNotifications = async () => {
+    try {
+      const { data } = await supabase.from('notifications').select('*').order('created_at', { ascending: false });
+      if (data) setSentNotifications(data);
+    } catch (e) {
+      console.log("Fetch notifications error");
+    }
+  };
 
   const fetchServices = async () => {
     try {
@@ -51,7 +62,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh }) => {
   };
 
   const fetchCategories = async () => {
-    // Tenta buscar categorias únicas já cadastradas para popular a lista inicial
     try {
       const { data } = await supabase.from('road_services').select('type');
       if (data) {
@@ -80,11 +90,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh }) => {
       
       alert("Alerta enviado com sucesso!");
       setAlertForm({ title: '', message: '', type: 'INFO', category: 'GENERAL', target_user_email: '' });
+      fetchNotifications();
       onRefresh();
     } catch (err: any) {
       alert("Erro: " + err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteNotification = async (id: string) => {
+    if (!confirm("Excluir esta mensagem definitivamente para todos os usuários?")) return;
+    try {
+      const { error } = await supabase.from('notifications').delete().eq('id', id);
+      if (error) throw error;
+      setSentNotifications(sentNotifications.filter(n => n.id !== id));
+      onRefresh();
+    } catch (e: any) {
+      alert("Erro ao excluir: " + e.message);
     }
   };
 
@@ -177,27 +200,68 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {activeTab === 'ALERTS' && (
-          <div className="lg:col-span-12 max-w-3xl mx-auto w-full bg-white p-10 rounded-[3.5rem] border shadow-sm">
-             <h3 className="text-2xl font-black mb-8 flex items-center gap-3 uppercase tracking-tight">
-                <Bell className="text-primary-600" size={28} /> Disparar Mensagem na Central
+          <div className="lg:col-span-12 space-y-10">
+            <div className="max-w-3xl mx-auto w-full bg-white p-10 rounded-[3.5rem] border shadow-sm">
+               <h3 className="text-2xl font-black mb-8 flex items-center gap-3 uppercase tracking-tight">
+                  <Bell className="text-primary-600" size={28} /> Disparar Mensagem na Central
+                </h3>
+                <form onSubmit={handleSendAlert} className="space-y-6">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">E-mail do Destinatário (Vazio = Geral)</label>
+                    <input type="email" placeholder="motorista@email.com" className="w-full p-5 bg-slate-50 border border-slate-100 rounded-3xl font-bold outline-none" value={alertForm.target_user_email} onChange={e => setAlertForm({...alertForm, target_user_email: e.target.value})} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Título do Comunicado</label>
+                    <input required placeholder="Ex: Aviso de Manutenção de Servidor" className="w-full p-5 bg-slate-50 border border-slate-100 rounded-3xl font-bold outline-none" value={alertForm.title} onChange={e => setAlertForm({...alertForm, title: e.target.value})} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Mensagem</label>
+                    <textarea rows={4} required placeholder="Descreva o alerta..." className="w-full p-5 bg-slate-50 border border-slate-100 rounded-3xl font-bold outline-none resize-none" value={alertForm.message} onChange={e => setAlertForm({...alertForm, message: e.target.value})} />
+                  </div>
+                  <button disabled={loading} type="submit" className="w-full py-6 bg-slate-900 text-white rounded-3xl font-black uppercase text-sm shadow-xl flex items-center justify-center gap-3 active:scale-95 transition-all">
+                    {loading ? <Loader2 className="animate-spin" /> : <Send size={24} />} Enviar Alerta
+                  </button>
+                </form>
+            </div>
+
+            {/* Lista de Alertas Enviados */}
+            <div className="max-w-4xl mx-auto w-full space-y-4">
+              <h3 className="text-xl font-black uppercase px-4 flex items-center gap-2">
+                <History size={20} className="text-primary-600" /> Histórico de Mensagens Enviadas
               </h3>
-              <form onSubmit={handleSendAlert} className="space-y-6">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">E-mail do Destinatário (Vazio = Geral)</label>
-                  <input type="email" placeholder="motorista@email.com" className="w-full p-5 bg-slate-50 border border-slate-100 rounded-3xl font-bold outline-none" value={alertForm.target_user_email} onChange={e => setAlertForm({...alertForm, target_user_email: e.target.value})} />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Título do Comunicado</label>
-                  <input required placeholder="Ex: Aviso de Manutenção de Servidor" className="w-full p-5 bg-slate-50 border border-slate-100 rounded-3xl font-bold outline-none" value={alertForm.title} onChange={e => setAlertForm({...alertForm, title: e.target.value})} />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Mensagem</label>
-                  <textarea rows={4} required placeholder="Descreva o alerta..." className="w-full p-5 bg-slate-50 border border-slate-100 rounded-3xl font-bold outline-none resize-none" value={alertForm.message} onChange={e => setAlertForm({...alertForm, message: e.target.value})} />
-                </div>
-                <button disabled={loading} type="submit" className="w-full py-6 bg-slate-900 text-white rounded-3xl font-black uppercase text-sm shadow-xl flex items-center justify-center gap-3 active:scale-95 transition-all">
-                  {loading ? <Loader2 className="animate-spin" /> : <Send size={24} />} Enviar Alerta
-                </button>
-              </form>
+              <div className="space-y-4">
+                {sentNotifications.length === 0 ? (
+                  <div className="bg-white p-12 rounded-[3rem] border border-dashed border-slate-200 text-center">
+                    <MessageSquareQuote size={48} className="mx-auto text-slate-200 mb-4" />
+                    <p className="text-slate-400 font-bold uppercase text-xs tracking-widest">Nenhuma mensagem enviada ainda.</p>
+                  </div>
+                ) : (
+                  sentNotifications.map(n => (
+                    <div key={n.id} className="bg-white p-6 rounded-[2.5rem] border shadow-sm flex items-start justify-between gap-4 group hover:border-primary-200 transition-all">
+                      <div className="flex gap-4">
+                         <div className={`p-4 rounded-2xl shrink-0 ${n.type === 'URGENT' ? 'bg-rose-50 text-rose-500' : 'bg-slate-50 text-slate-400'}`}>
+                            <Bell size={24} />
+                         </div>
+                         <div className="overflow-hidden">
+                           <div className="flex items-center gap-2 mb-1">
+                              <h4 className="font-black text-slate-900 uppercase tracking-tight">{n.title}</h4>
+                              {n.target_user_email && <span className="text-[8px] font-black bg-primary-100 text-primary-600 px-2 py-0.5 rounded-full uppercase">Privado</span>}
+                           </div>
+                           <p className="text-xs text-slate-500 font-medium leading-relaxed line-clamp-2">{n.message}</p>
+                           <div className="flex items-center gap-3 mt-2">
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{new Date(n.created_at).toLocaleDateString()}</span>
+                              {n.target_user_email && <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Para: {n.target_user_email}</span>}
+                           </div>
+                         </div>
+                      </div>
+                      <button onClick={() => handleDeleteNotification(n.id)} className="p-3 bg-slate-50 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all shrink-0">
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
         )}
 
