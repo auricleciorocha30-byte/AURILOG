@@ -1,13 +1,13 @@
 
 import React from 'react';
-import { X, Bell, AlertTriangle, Clock, Calendar, Gauge, CreditCard, CheckCircle2, ChevronRight, Trash2 } from 'lucide-react';
+import { X, Bell, AlertTriangle, Clock, Calendar, Gauge, CreditCard, CheckCircle2, ChevronRight, Trash2, MessageCircle } from 'lucide-react';
 
 interface Notification {
   id: string;
   type: 'URGENT' | 'WARNING' | 'INFO';
   title: string;
   message: string;
-  category: 'JORNADA' | 'MAINTENANCE' | 'FINANCE' | 'TRIP';
+  category: 'JORNADA' | 'MAINTENANCE' | 'FINANCE' | 'TRIP' | 'GENERAL';
   date: string;
 }
 
@@ -44,18 +44,18 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notifica
               </div>
               <h4 className="text-xl font-black text-slate-800 uppercase tracking-tight">Tudo em dia!</h4>
               <p className="text-slate-400 font-medium text-sm mt-2">
-                Nenhum alerta pendente. Sua operação está rodando dentro dos prazos e metas.
+                Nenhum alerta pendente no momento.
               </p>
             </div>
           ) : (
             notifications.map((n) => (
               <div 
                 key={n.id} 
-                onClick={() => { onAction(n.category); onClose(); }}
-                className={`p-5 rounded-3xl border-2 cursor-pointer transition-all hover:scale-[1.02] active:scale-95 group relative overflow-hidden ${
+                className={`p-5 rounded-3xl border-2 cursor-pointer transition-all hover:scale-[1.01] active:scale-95 group relative overflow-hidden ${
                   n.type === 'URGENT' ? 'border-rose-100 bg-rose-50/30' : 
                   n.type === 'WARNING' ? 'border-amber-100 bg-amber-50/30' : 'border-slate-50 bg-slate-50/30'
                 }`}
+                onClick={() => { if (n.category !== 'GENERAL') { onAction(n.category); onClose(); } }}
               >
                 <div className="flex gap-4">
                   <div className={`p-4 rounded-2xl shrink-0 ${
@@ -66,6 +66,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notifica
                     {n.category === 'MAINTENANCE' && <Gauge size={24} />}
                     {n.category === 'FINANCE' && <CreditCard size={24} />}
                     {n.category === 'TRIP' && <Calendar size={24} />}
+                    {(n.category === 'GENERAL' || !n.category) && <MessageCircle size={24} />}
                   </div>
                   
                   <div className="flex-1 pr-8">
@@ -74,24 +75,23 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notifica
                         n.type === 'URGENT' ? 'text-rose-500' : 
                         n.type === 'WARNING' ? 'text-amber-500' : 'text-blue-500'
                       }`}>
-                        {n.category} • {n.type === 'URGENT' ? 'Imediato' : 'Importante'}
+                        {n.category === 'GENERAL' ? 'AVISO GERAL' : n.category} • {n.type === 'URGENT' ? 'URGENTE' : 'AVISO'}
                       </span>
-                      <span className="text-[9px] font-bold text-slate-400 uppercase">{n.date}</span>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase whitespace-nowrap">{n.date}</span>
                     </div>
                     <h4 className="font-black text-slate-800 leading-tight mb-1">{n.title}</h4>
                     <p className="text-xs text-slate-500 font-medium leading-relaxed">{n.message}</p>
                   </div>
                 </div>
                 
-                <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                <div className="absolute right-3 top-3">
                   <button 
                     onClick={(e) => { e.stopPropagation(); onDismiss(n.id); }}
-                    className="p-2 bg-white shadow-md rounded-full text-slate-300 hover:text-rose-500 transition-all"
-                    title="Descartar alerta"
+                    className="p-2 bg-white/80 hover:bg-rose-500 hover:text-white shadow-sm rounded-full text-slate-300 transition-all"
+                    title="Descartar"
                   >
-                    <Trash2 size={18} />
+                    <X size={14} />
                   </button>
-                  <ChevronRight size={20} className="text-slate-300 hidden md:block" />
                 </div>
               </div>
             ))
@@ -99,8 +99,8 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notifica
         </div>
 
         <div className="p-6 bg-slate-50 border-t">
-          <button onClick={onClose} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl">
-            Entendido
+          <button onClick={onClose} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl active:scale-95 transition-all">
+            Fechar Central
           </button>
         </div>
       </div>

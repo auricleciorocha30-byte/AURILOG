@@ -16,7 +16,6 @@ import { supabase } from './lib/supabase';
 import { offlineStorage } from './lib/offlineStorage';
 
 const App: React.FC = () => {
-  // Define se estamos no modo "Sistema Principal" ou "Admin" baseado na URL
   const isUserMode = new URLSearchParams(window.location.search).get('mode') === 'user';
 
   const [session, setSession] = useState<any>(null);
@@ -32,14 +31,12 @@ const App: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   
-  // Estados de Form
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  // Estados de Dados
   const [jornadaMode, setJornadaMode] = useState<'IDLE' | 'DRIVING' | 'RESTING'>('IDLE');
   const [jornadaStartTime, setJornadaStartTime] = useState<number | null>(null);
   const [jornadaElapsed, setJornadaElapsed] = useState(0);
@@ -55,15 +52,13 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : [];
   });
 
-  // Salvar descartes no localStorage
   useEffect(() => {
     localStorage.setItem('aurilog_dismissed_notifications', JSON.stringify(dismissedNotificationIds));
   }, [dismissedNotificationIds]);
 
-  // Real-time para notificações
   useEffect(() => {
     const channel = supabase
-      .channel('schema-db-changes')
+      .channel('notifications-realtime')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'notifications' },
@@ -89,7 +84,6 @@ const App: React.FC = () => {
       e.preventDefault();
       setDeferredPrompt(e);
     });
-
     return () => window.removeEventListener('beforeinstallprompt', () => {});
   }, []);
 
@@ -100,9 +94,7 @@ const App: React.FC = () => {
     }
     deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      setDeferredPrompt(null);
-    }
+    if (outcome === 'accepted') setDeferredPrompt(null);
   };
 
   useEffect(() => {
@@ -151,7 +143,7 @@ const App: React.FC = () => {
           const { error: syncError } = await supabase.from(item.table).delete().eq('id', item.data.id).eq('user_id', session.user.id);
           error = syncError;
         }
-        if (!error) { await offlineStorage.markAsSynced(item.id); }
+        if (!error) await offlineStorage.markAsSynced(item.id);
       }
       await fetchData(true); 
     } catch (err) { console.error("Sync error:", err); } finally { setSyncing(false); }
@@ -167,9 +159,7 @@ const App: React.FC = () => {
         if (notifRes.data) setDbNotifications(notifRes.data);
         if (servRes.data) setRoadServices(servRes.data);
       }
-    } catch (e) {
-      console.log("Global data fetch failed");
-    }
+    } catch (e) { console.log("Global data fetch failed"); }
 
     if (!session?.user) return;
     const userId = session.user.id;
@@ -213,12 +203,15 @@ const App: React.FC = () => {
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const todayStr = today.toISOString().split('T')[0];
     
+    // 1. Notificações do Banco de Dados (Admin)
     dbNotifications.forEach(n => {
+      // Verifica se a notificação é para o usuário atual ou geral
       if (!n.target_user_email || (session?.user?.email === n.target_user_email)) {
-        list.push({ ...n, category: n.category as any, date: 'Alerta Admin' });
+        list.push({ ...n, category: n.category as any, date: 'Comunicado Admin' });
       }
     });
 
+    // 2. Alertas de Manutenção
     maintenance.forEach(m => {
       const vehicle = vehicles.find(v => v.id === m.vehicle_id);
       if (!vehicle) return;
@@ -226,28 +219,31 @@ const App: React.FC = () => {
       const expiryDate = new Date(pDate);
       expiryDate.setMonth(pDate.getMonth() + (m.warranty_months || 0));
       const kmLimit = (m.km_at_purchase || 0) + (m.warranty_km || 0);
+      
       if ((m.warranty_months > 0 && expiryDate < today) || (m.warranty_km > 0 && vehicle.current_km >= kmLimit)) {
         list.push({ id: `maint-${m.id}`, type: 'URGENT', category: 'MAINTENANCE', title: `Manutenção Vencida: ${m.part_name}`, message: `Verifique o veículo ${vehicle.plate}.`, date: 'Agora' });
       }
     });
 
+    // 3. Alertas de Finanças (Ajustado para sumir quando a parcela muda)
     expenses.forEach(e => {
       if (!e.is_paid && e.due_date) {
         const dueDate = new Date(e.due_date + 'T12:00:00');
         const diffDays = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
         
+        // Se a data de vencimento for no passado (antes de hoje)
         if (dueDate < today && e.due_date !== todayStr) {
           list.push({
-            id: `exp-overdue-${e.id}`,
+            id: `exp-overdue-${e.id}-${e.installment_number || 1}`, // ID único por parcela para garantir que ao pagar a anterior, o alerta suma se a data mudar
             type: 'URGENT',
             category: 'FINANCE',
-            title: 'Dívida em Atraso!',
+            title: `Conta Atrasada (${e.installment_number}/${e.installments_total})`,
             message: `${e.description} - R$ ${e.amount.toLocaleString('pt-BR')}`,
             date: e.due_date
           });
         } else if (diffDays >= 0 && diffDays <= 3) {
           list.push({
-            id: `exp-upcoming-${e.id}`,
+            id: `exp-upcoming-${e.id}-${e.installment_number || 1}`,
             type: 'WARNING',
             category: 'FINANCE',
             title: diffDays === 0 ? 'Vence Hoje!' : `Vence em ${diffDays} dias`,
@@ -258,6 +254,7 @@ const App: React.FC = () => {
       }
     });
 
+    // Filtra descartados localmente e mensagens que já foram deletadas do banco
     return list.filter(n => !dismissedNotificationIds.includes(n.id));
   }, [trips, expenses, maintenance, vehicles, dbNotifications, dismissedNotificationIds, session]);
 
@@ -269,9 +266,7 @@ const App: React.FC = () => {
       } catch (e) { console.log("Session recovery failed"); } finally { setLoading(false); }
     };
     initAuth();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setSession(session));
     return () => subscription.unsubscribe();
   }, []);
 
@@ -309,37 +304,21 @@ const App: React.FC = () => {
     setError('');
     setSuccessMsg('');
     setAuthLoading(true);
-
     try {
       if (isPasswordRecovery) {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, { 
-          redirectTo: window.location.origin + '?mode=user' 
-        });
+        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + '?mode=user' });
         if (error) throw error;
         setSuccessMsg("E-mail de recuperação enviado!");
       } else {
-        const { data, error } = await supabase.auth.signInWithPassword({ 
-          email: email.trim(), 
-          password: password 
-        });
-        
+        const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (error) throw new Error("E-mail ou senha incorretos.");
-
         if (data.session) {
-          if (!isUserMode) {
-             // Se for login administrativo, validamos e setamos flag local
-             setIsAdminAuthenticated(true);
-          } else {
-             setSession(data.session);
-          }
+          if (!isUserMode) setIsAdminAuthenticated(true);
+          else setSession(data.session);
           setSuccessMsg("Acesso autorizado!");
         }
       }
-    } catch (err: any) {
-      setError(err.message || "Erro ao tentar realizar o login.");
-    } finally {
-      setAuthLoading(false);
-    }
+    } catch (err: any) { setError(err.message || "Erro no login."); } finally { setAuthLoading(false); }
   };
 
   const handleAdminLogout = async () => {
@@ -350,7 +329,6 @@ const App: React.FC = () => {
 
   if (loading) return <div className="h-screen flex items-center justify-center bg-slate-950"><Loader2 className="animate-spin text-primary-500" size={48} /></div>;
 
-  // LOGIN ADMINISTRATIVO (Caso não esteja autenticado como Admin)
   if (!isUserMode && !isAdminAuthenticated) {
     return (
       <div className="min-h-screen w-full flex items-center justify-center bg-slate-950 p-6">
@@ -360,7 +338,6 @@ const App: React.FC = () => {
               <h2 className="text-3xl font-black text-white uppercase tracking-tighter">Painel de Controle</h2>
               <p className="text-slate-500 font-bold text-xs mt-2 uppercase tracking-widest">Acesso Restrito ao Administrador</p>
            </div>
-           
            <form onSubmit={handleAuth} className="space-y-6 text-left">
               <div className="space-y-2">
                  <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Usuário Master</label>
@@ -376,13 +353,10 @@ const App: React.FC = () => {
                     <input required type="password" placeholder="••••••••" className="w-full p-5 pl-14 bg-slate-800 border border-slate-700 rounded-3xl font-bold text-white outline-none focus:ring-2 focus:ring-primary-500 transition-all" value={password} onChange={e => setPassword(e.target.value)} />
                  </div>
               </div>
-              
               {error && <div className="bg-rose-500/10 border border-rose-500/20 p-4 rounded-2xl text-rose-500 text-xs font-black text-center">{error}</div>}
               {successMsg && <div className="bg-emerald-500/10 border border-emerald-500/20 p-4 rounded-2xl text-emerald-500 text-xs font-black text-center">{successMsg}</div>}
-
               <button disabled={authLoading} type="submit" className="w-full py-6 bg-primary-600 text-white rounded-3xl font-black text-lg shadow-xl hover:bg-primary-700 transition-all flex items-center justify-center gap-3">
-                 {authLoading ? <Loader2 className="animate-spin" /> : <ShieldCheck size={24} />}
-                 Autenticar Painel
+                 {authLoading ? <Loader2 className="animate-spin" /> : <ShieldCheck size={24} />} Autenticar Painel
               </button>
            </form>
         </div>
@@ -390,16 +364,8 @@ const App: React.FC = () => {
     );
   }
 
-  // PORTAL ADMINISTRATIVO AUTENTICADO
-  if (!isUserMode && isAdminAuthenticated) {
-    return (
-      <div className="min-h-screen bg-slate-50 overflow-y-auto">
-        <AdminPanel onRefresh={fetchData} onLogout={handleAdminLogout} />
-      </div>
-    );
-  }
+  if (!isUserMode && isAdminAuthenticated) return <div className="min-h-screen bg-slate-50 overflow-y-auto"><AdminPanel onRefresh={fetchData} onLogout={handleAdminLogout} /></div>;
 
-  // LOGIN DO USUÁRIO (SISTEMA DE VIAGENS)
   if (!session) return (
     <div className="min-h-screen w-full flex items-center justify-center bg-slate-900 p-4">
       <div className="w-full max-w-md bg-white rounded-[3rem] shadow-2xl p-10 animate-fade-in border border-white/10">
@@ -417,23 +383,19 @@ const App: React.FC = () => {
             <div className="space-y-1.5">
               <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Senha</label>
               <input required type="password" placeholder="••••••••" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-primary-500 transition-all" value={password} onChange={e => setPassword(e.target.value)} />
-              <div className="flex justify-end mt-1">
-                <button type="button" onClick={() => setIsPasswordRecovery(true)} className="text-[10px] font-black uppercase text-primary-600 hover:underline">Esqueceu a senha?</button>
-              </div>
+              <div className="flex justify-end mt-1"><button type="button" onClick={() => setIsPasswordRecovery(true)} className="text-[10px] font-black uppercase text-primary-600 hover:underline">Esqueceu a senha?</button></div>
             </div>
           )}
           {error && <div className="bg-rose-50 border border-rose-100 p-4 rounded-2xl text-rose-600 text-xs font-bold animate-pulse">{error}</div>}
           {successMsg && <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl text-emerald-600 text-xs font-bold">{successMsg}</div>}
           <button disabled={authLoading} type="submit" className="w-full py-5 bg-primary-600 text-white rounded-2xl font-black text-lg shadow-xl hover:bg-primary-700 transition-all flex items-center justify-center gap-3">
-            {authLoading ? <Loader2 className="animate-spin" /> : <LogIn size={20} />}
-            {isPasswordRecovery ? 'Enviar E-mail' : 'Entrar no Sistema'}
+            {authLoading ? <Loader2 className="animate-spin" /> : <LogIn size={20} />} {isPasswordRecovery ? 'Enviar E-mail' : 'Entrar no Sistema'}
           </button>
         </form>
       </div>
     </div>
   );
 
-  // SISTEMA PRINCIPAL AUTENTICADO
   const MenuBtn = ({ icon: Icon, label, active, onClick }: any) => (
     <button onClick={onClick} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all active:scale-95 ${active ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}><Icon size={20} /><span className="font-bold text-sm">{label}</span></button>
   );
@@ -455,24 +417,8 @@ const App: React.FC = () => {
           <MenuBtn icon={Timer} label="Jornada" active={currentView === AppView.JORNADA} onClick={() => {setCurrentView(AppView.JORNADA); setIsMobileMenuOpen(false);}} />
           <MenuBtn icon={MapPinHouse} label="Serviços Estrada" active={currentView === AppView.STATIONS} onClick={() => {setCurrentView(AppView.STATIONS); setIsMobileMenuOpen(false);}} />
         </nav>
-        
-        {/* Botão de Instalação PWA */}
-        <div className="px-2 mb-2">
-          <button 
-            onClick={handleInstallClick} 
-            className="w-full flex items-center gap-3 px-4 py-4 bg-primary-600/10 text-primary-400 rounded-2xl border border-primary-600/20 hover:bg-primary-600 hover:text-white transition-all group"
-          >
-            <Download size={20} className="group-hover:animate-bounce" />
-            <div className="text-left">
-              <p className="text-[10px] font-black uppercase tracking-widest leading-none">Baixar App</p>
-              <p className="text-[8px] font-bold opacity-60 uppercase">Instalar no Celular</p>
-            </div>
-          </button>
-        </div>
-
-        <div className="pt-4 border-t border-white/5 mt-auto pb-12">
-          <button onClick={async () => { await supabase.auth.signOut(); window.location.reload(); }} className="w-full flex items-center gap-3 px-6 py-4 text-rose-400 font-black uppercase text-xs hover:bg-white/5 rounded-2xl transition-all"><LogOut size={18} /> Sair da Conta</button>
-        </div>
+        <div className="px-2 mb-2"><button onClick={handleInstallClick} className="w-full flex items-center gap-3 px-4 py-4 bg-primary-600/10 text-primary-400 rounded-2xl border border-primary-600/20 hover:bg-primary-600 hover:text-white transition-all group"><Download size={20} className="group-hover:animate-bounce" /><div className="text-left"><p className="text-[10px] font-black uppercase tracking-widest leading-none">Baixar App</p><p className="text-[8px] font-bold opacity-60 uppercase">Instalar no Celular</p></div></button></div>
+        <div className="pt-4 border-t border-white/5 mt-auto pb-12"><button onClick={async () => { await supabase.auth.signOut(); window.location.reload(); }} className="w-full flex items-center gap-3 px-6 py-4 text-rose-400 font-black uppercase text-xs hover:bg-white/5 rounded-2xl transition-all"><LogOut size={18} /> Sair da Conta</button></div>
       </aside>
 
       <main className="flex-1 flex flex-col overflow-hidden relative z-10">
