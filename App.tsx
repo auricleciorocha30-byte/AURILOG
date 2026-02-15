@@ -56,9 +56,10 @@ const App: React.FC = () => {
     localStorage.setItem('aurilog_dismissed_notifications', JSON.stringify(dismissedNotificationIds));
   }, [dismissedNotificationIds]);
 
+  // Real-time listener para alertas administrativos e sincronização global
   useEffect(() => {
     const channel = supabase
-      .channel('notifications-realtime')
+      .channel('aurilog-global-alerts')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'notifications' },
@@ -203,15 +204,19 @@ const App: React.FC = () => {
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const todayStr = today.toISOString().split('T')[0];
     
-    // 1. Notificações do Banco de Dados (Admin)
+    // 1. Notificações do Painel Administrativo
     dbNotifications.forEach(n => {
-      // Verifica se a notificação é para o usuário atual ou geral
       if (!n.target_user_email || (session?.user?.email === n.target_user_email)) {
-        list.push({ ...n, category: n.category as any, date: 'Comunicado Admin' });
+        list.push({ 
+          ...n, 
+          category: n.category as any, 
+          date: 'Alerta Admin',
+          persistent: false // Alertas admin podem ser descartados
+        });
       }
     });
 
-    // 2. Alertas de Manutenção
+    // 2. Alertas de Manutenção de Veículos
     maintenance.forEach(m => {
       const vehicle = vehicles.find(v => v.id === m.vehicle_id);
       if (!vehicle) return;
@@ -221,25 +226,34 @@ const App: React.FC = () => {
       const kmLimit = (m.km_at_purchase || 0) + (m.warranty_km || 0);
       
       if ((m.warranty_months > 0 && expiryDate < today) || (m.warranty_km > 0 && vehicle.current_km >= kmLimit)) {
-        list.push({ id: `maint-${m.id}`, type: 'URGENT', category: 'MAINTENANCE', title: `Manutenção Vencida: ${m.part_name}`, message: `Verifique o veículo ${vehicle.plate}.`, date: 'Agora' });
+        list.push({ 
+          id: `maint-${m.id}`, 
+          type: 'URGENT', 
+          category: 'MAINTENANCE', 
+          title: `Manutenção Vencida: ${m.part_name}`, 
+          message: `Verifique o veículo ${vehicle.plate}.`, 
+          date: 'Agora',
+          persistent: true 
+        });
       }
     });
 
-    // 3. Alertas de Finanças (Ajustado para sumir quando a parcela muda)
+    // 3. Alertas de Finanças (Regra solicitada: Persiste no sininho se estiver atrasado)
     expenses.forEach(e => {
       if (!e.is_paid && e.due_date) {
         const dueDate = new Date(e.due_date + 'T12:00:00');
         const diffDays = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
         
-        // Se a data de vencimento for no passado (antes de hoje)
+        // Se a parcela estiver com data de vencimento no passado
         if (dueDate < today && e.due_date !== todayStr) {
           list.push({
-            id: `exp-overdue-${e.id}-${e.installment_number || 1}`, // ID único por parcela para garantir que ao pagar a anterior, o alerta suma se a data mudar
+            id: `exp-overdue-${e.id}-${e.installment_number || 1}`,
             type: 'URGENT',
             category: 'FINANCE',
-            title: `Conta Atrasada (${e.installment_number}/${e.installments_total})`,
+            title: `Parcela Atrasada (${e.installment_number}/${e.installments_total})`,
             message: `${e.description} - R$ ${e.amount.toLocaleString('pt-BR')}`,
-            date: e.due_date
+            date: e.due_date,
+            persistent: true // FORÇA A PERMANÊNCIA NO SININHO ATÉ O PAGAMENTO
           });
         } else if (diffDays >= 0 && diffDays <= 3) {
           list.push({
@@ -248,14 +262,18 @@ const App: React.FC = () => {
             category: 'FINANCE',
             title: diffDays === 0 ? 'Vence Hoje!' : `Vence em ${diffDays} dias`,
             message: `${e.description} - R$ ${e.amount.toLocaleString('pt-BR')}`,
-            date: e.due_date
+            date: e.due_date,
+            persistent: false
           });
         }
       }
     });
 
-    // Filtra descartados localmente e mensagens que já foram deletadas do banco
-    return list.filter(n => !dismissedNotificationIds.includes(n.id));
+    // Filtra as notificações descartadas, EXCETO aquelas que são marcadas como persistentes (Atrasos financeiros)
+    return list.filter(n => {
+      if (n.persistent) return true; // Se for persistente, não sai do sininho mesmo se clicado em 'descartar' no passado (ou não permite descarte)
+      return !dismissedNotificationIds.includes(n.id);
+    });
   }, [trips, expenses, maintenance, vehicles, dbNotifications, dismissedNotificationIds, session]);
 
   useEffect(() => {
@@ -426,7 +444,7 @@ const App: React.FC = () => {
           <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden p-2 text-slate-600 hover:bg-slate-50 rounded-lg"><Menu size={24} /></button>
           <div className="flex items-center gap-2">
             <button onClick={() => setIsNotificationOpen(true)} className="relative p-3 text-slate-500 hover:bg-slate-50 rounded-full transition-all active:scale-90">
-              <Bell size={24} />
+              <Bell size={24} className={activeNotifications.some(n => n.type === 'URGENT') ? 'text-rose-500 animate-pulse' : ''} />
               {activeNotifications.length > 0 && <span className="absolute top-2 right-2 bg-rose-500 text-white text-[8px] font-black w-5 h-5 rounded-full flex items-center justify-center border-2 border-white">{activeNotifications.length}</span>}
             </button>
           </div>
