@@ -211,7 +211,7 @@ const App: React.FC = () => {
           ...n, 
           category: n.category as any, 
           date: 'Alerta Admin',
-          persistent: false // Alertas admin podem ser descartados
+          persistent: false 
         });
       }
     });
@@ -238,13 +238,12 @@ const App: React.FC = () => {
       }
     });
 
-    // 3. Alertas de Finanças (Regra solicitada: Persiste no sininho se estiver atrasado)
+    // 3. Alertas de Finanças (Persiste no sininho se estiver atrasado)
     expenses.forEach(e => {
       if (!e.is_paid && e.due_date) {
         const dueDate = new Date(e.due_date + 'T12:00:00');
         const diffDays = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
         
-        // Se a parcela estiver com data de vencimento no passado
         if (dueDate < today && e.due_date !== todayStr) {
           list.push({
             id: `exp-overdue-${e.id}-${e.installment_number || 1}`,
@@ -253,7 +252,7 @@ const App: React.FC = () => {
             title: `Parcela Atrasada (${e.installment_number}/${e.installments_total})`,
             message: `${e.description} - R$ ${e.amount.toLocaleString('pt-BR')}`,
             date: e.due_date,
-            persistent: true // FORÇA A PERMANÊNCIA NO SININHO ATÉ O PAGAMENTO
+            persistent: true 
           });
         } else if (diffDays >= 0 && diffDays <= 3) {
           list.push({
@@ -269,9 +268,39 @@ const App: React.FC = () => {
       }
     });
 
-    // Filtra as notificações descartadas, EXCETO aquelas que são marcadas como persistentes (Atrasos financeiros)
+    // 4. Alertas de Viagens (Viagens agendadas para hoje ou atrasadas)
+    trips.forEach(t => {
+      if (t.status === TripStatus.SCHEDULED) {
+        const isOverdue = t.date < todayStr;
+        const isToday = t.date === todayStr;
+
+        if (isOverdue) {
+          list.push({
+            id: `trip-overdue-${t.id}`,
+            type: 'URGENT',
+            category: 'TRIP',
+            title: 'Viagem em Atraso!',
+            message: `Saída pendente: ${t.origin.split(' - ')[0]} para ${t.destination.split(' - ')[0]}`,
+            date: t.date,
+            persistent: true
+          });
+        } else if (isToday) {
+          list.push({
+            id: `trip-today-${t.id}`,
+            type: 'WARNING',
+            category: 'TRIP',
+            title: 'Viagem para Hoje',
+            message: `Você tem uma viagem agendada: ${t.origin.split(' - ')[0]} ➔ ${t.destination.split(' - ')[0]}`,
+            date: 'Hoje',
+            persistent: false
+          });
+        }
+      }
+    });
+
+    // Filtra as notificações descartadas, EXCETO aquelas que são marcadas como persistentes
     return list.filter(n => {
-      if (n.persistent) return true; // Se for persistente, não sai do sininho mesmo se clicado em 'descartar' no passado (ou não permite descarte)
+      if (n.persistent) return true; 
       return !dismissedNotificationIds.includes(n.id);
     });
   }, [trips, expenses, maintenance, vehicles, dbNotifications, dismissedNotificationIds, session]);
