@@ -1,14 +1,16 @@
+
 import React, { useState, useEffect } from 'react';
-import { Send, Bell, MapPin, Loader2, ShieldAlert, Trash2, CheckCircle2, Store, Fuel, Wrench, Hammer, User, Mail, Plus, ExternalLink, RefreshCcw, MapPinHouse, Utensils, Edit2, Tag, X, History, MessageSquareQuote, LogOut, RotateCcw, MapPinned, Radar, Navigation, Signal, ChevronRight, Search, LayoutDashboard, Truck, Wallet, CheckSquare, Eye, AlertTriangle, Info, ShieldCheck, Globe, Users, KeyRound, UserPlus, UserCheck } from 'lucide-react';
+import { Send, Bell, MapPin, Loader2, ShieldAlert, Trash2, CheckCircle2, Store, Fuel, Wrench, Hammer, User, Mail, Plus, ExternalLink, RefreshCcw, MapPinHouse, Utensils, Edit2, Tag, X, History, MessageSquareQuote, LogOut, RotateCcw, MapPinned, Radar, Navigation, Signal, ChevronRight, Search, LayoutDashboard, Truck, Wallet, CheckSquare, Eye, AlertTriangle, Info, ShieldCheck, Globe, Users, KeyRound, UserPlus, UserCheck, Unlock, Smartphone } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { RoadService, DbNotification, UserLocation, Trip, Expense, Vehicle, MaintenanceItem, Driver } from '../types';
 
 interface AdminPanelProps {
   onRefresh: () => void;
   onLogout: () => void;
+  onUnlockDriverApp: () => void;
 }
 
-export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) => {
+export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, onUnlockDriverApp }) => {
   const [activeTab, setActiveTab] = useState<'LOCATIONS' | 'DRIVERS' | 'EXPLORER' | 'ALERTS' | 'SERVICES' | 'CATEGORIES'>('LOCATIONS');
   const [loading, setLoading] = useState(false);
   const [services, setServices] = useState<RoadService[]>([]);
@@ -46,7 +48,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
     target_user_email: '' 
   });
 
-  // Form de Serviço (Restaurado)
+  // Form de Serviço
   const [serviceForm, setServiceForm] = useState({
     name: '',
     type: 'Posto de Combustível',
@@ -228,7 +230,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
     setNewCategory('');
   };
 
-  // Funções de Gerenciamento de Serviços (Restauradas)
   const handleSaveService = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!serviceForm.name || !serviceForm.address || !serviceForm.location_url) return alert("Preencha nome, endereço e link do mapa.");
@@ -270,18 +271,30 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
     <div className="max-w-7xl mx-auto space-y-4 md:space-y-8 animate-fade-in py-6 md:py-12 px-4 pb-32">
       {/* Header Administrativo */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-6 md:p-8 rounded-3xl md:rounded-[3rem] border shadow-sm">
-        <div>
-          <h2 className="text-2xl md:text-4xl font-black text-slate-900 tracking-tighter uppercase leading-none">Painel Administrativo</h2>
-          <p className="text-slate-400 font-bold text-[10px] md:text-xs uppercase tracking-widest mt-2 flex items-center gap-2">
-            <ShieldAlert size={16} className="text-primary-600" /> AuriLog Master Control
-          </p>
+        <div className="flex items-center gap-4">
+          <div className="p-4 bg-primary-600 text-white rounded-3xl shadow-xl shadow-primary-600/20">
+             <ShieldCheck size={32} />
+          </div>
+          <div>
+            <h2 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tighter uppercase leading-none">Painel Master</h2>
+            <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest mt-1 flex items-center gap-2">
+              Gestão de Frota & Operações
+            </p>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button onClick={() => window.open(window.location.origin + '?mode=user', '_blank')} className="flex items-center gap-2 px-6 py-4 bg-white border-2 border-slate-100 text-slate-600 rounded-2xl font-black text-[10px] uppercase hover:border-primary-500 transition-all">
-            <ExternalLink size={16} /> Abrir App
+          {/* BOTÃO CRÍTICO: LIBERAR ACESSO MOTORISTA */}
+          <button 
+            onClick={onUnlockDriverApp} 
+            className="flex items-center gap-3 px-8 py-5 bg-emerald-600 text-white rounded-2xl font-black text-[11px] uppercase shadow-xl shadow-emerald-600/20 hover:bg-emerald-700 active:scale-95 transition-all"
+          >
+            <Unlock size={18} /> Abrir App Motorista
           </button>
-          <button onClick={onLogout} className="flex items-center gap-2 px-6 py-4 bg-rose-600 text-white rounded-2xl font-black text-[10px] uppercase shadow-lg hover:bg-rose-700 transition-all">
-            <LogOut size={16} /> Sair
+          <button 
+            onClick={onLogout} 
+            className="flex items-center gap-3 px-8 py-5 bg-white border-2 border-slate-100 text-rose-500 rounded-2xl font-black text-[11px] uppercase hover:bg-rose-50 transition-all"
+          >
+            <LogOut size={18} /> Sair
           </button>
         </div>
       </div>
@@ -446,7 +459,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
           </div>
         )}
 
-        {/* SERVIÇOS NA ESTRADA (Restaurado) */}
+        {/* SERVIÇOS NA ESTRADA */}
         {activeTab === 'SERVICES' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fade-in">
              <div className="lg:col-span-5 bg-white p-8 md:p-12 rounded-[3.5rem] border shadow-sm h-fit">
@@ -477,7 +490,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                      {loading ? <Loader2 className="animate-spin" /> : editingServiceId ? 'Atualizar Dados' : 'Cadastrar Parceiro'}
                    </button>
                    {editingServiceId && (
-                     <button type="button" onClick={() => { setEditingServiceId(null); setServiceForm({name:'', type: categories[0]||'Posto', description:'', address:'', phone:'', location_url:''}); }} className="w-full py-3 text-slate-400 font-black uppercase text-[10px]">Cancelar Edição</button>
+                     <button type="button" onClick={() => { setEditingServiceId(null); setServiceForm({name:'', type: categories[0]||'Posto de Combustível', description:'', address:'', phone:'', location_url:''}); }} className="w-full py-3 text-slate-400 font-black uppercase text-[10px]">Cancelar Edição</button>
                    )}
                 </form>
              </div>

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { AppView, Trip, Expense, Vehicle, MaintenanceItem, JornadaLog, DbNotification, TripStatus } from './types';
+import { AppView, Trip, Expense, Vehicle, MaintenanceItem, JornadaLog, DbNotification, TripStatus, Driver } from './types';
 import { supabase } from './lib/supabase';
 import { offlineStorage } from './lib/offlineStorage';
 import { Dashboard } from './components/Dashboard';
@@ -28,21 +28,35 @@ import {
   WifiOff,
   LogOut,
   Menu,
-  X
+  X,
+  User,
+  KeyRound,
+  ShieldCheck,
+  ChevronRight,
+  Loader2,
+  Lock,
+  Smartphone,
+  Building2,
+  Unlock
 } from 'lucide-react';
 
-/**
- * Main Application Component
- * Manages global state, data synchronization, and view routing.
- */
 const App: React.FC = () => {
+  const [authRole, setAuthRole] = useState<'DRIVER' | 'ADMIN' | null>(null);
+  const [loginMode, setLoginMode] = useState<'ADMIN' | 'DRIVER'>('ADMIN');
+  const [isDriverAppUnlocked, setIsDriverAppUnlocked] = useState(false);
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [loginForm, setLoginForm] = useState({ email: '', password: '' });
+
+  // Data states
   const [trips, setTrips] = useState<Trip[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [maintenance, setMaintenance] = useState<MaintenanceItem[]>([]);
   const [jornadaLogs, setJornadaLogs] = useState<JornadaLog[]>([]);
   const [notifications, setNotifications] = useState<DbNotification[]>([]);
+  
   const [isSaving, setIsSaving] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -53,7 +67,6 @@ const App: React.FC = () => {
   const [jornadaStartTime, setJornadaStartTime] = useState<number | null>(null);
   const [jornadaCurrentTime, setJornadaCurrentTime] = useState(0);
 
-  // Monitor network status
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
@@ -65,7 +78,6 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Update Jornada timer every second if active
   useEffect(() => {
     let interval: number;
     if (jornadaMode !== 'IDLE' && jornadaStartTime) {
@@ -78,10 +90,9 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [jornadaMode, jornadaStartTime]);
 
-  /**
-   * Fetches all necessary data from Supabase or IndexedDB (offline).
-   */
   const fetchData = useCallback(async () => {
+    if (authRole !== 'DRIVER' || !currentUser) return;
+
     if (!isOnline) {
       setTrips(await offlineStorage.getAll('trips'));
       setExpenses(await offlineStorage.getAll('expenses'));
@@ -93,53 +104,33 @@ const App: React.FC = () => {
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      // For demo purposes, if no user, we still show local data or empty state
-      if (!user) return;
+      const userId = user?.id || currentUser.id;
 
       const [tripsRes, expensesRes, vehiclesRes, maintenanceRes, jornadaRes, notificationsRes] = await Promise.all([
-        supabase.from('trips').select('*').eq('user_id', user.id).order('date', { ascending: false }),
-        supabase.from('expenses').select('*').eq('user_id', user.id).order('date', { ascending: false }),
-        supabase.from('vehicles').select('*').eq('user_id', user.id).order('plate', { ascending: true }),
-        supabase.from('maintenance').select('*').eq('user_id', user.id).order('purchase_date', { ascending: false }),
-        supabase.from('jornada_logs').select('*').eq('user_id', user.id).order('start_time', { ascending: false }),
-        supabase.from('notifications').select('*').or(`target_user_email.is.null,target_user_email.eq.${user.email}`).order('created_at', { ascending: false })
+        supabase.from('trips').select('*').eq('user_id', userId).order('date', { ascending: false }),
+        supabase.from('expenses').select('*').eq('user_id', userId).order('date', { ascending: false }),
+        supabase.from('vehicles').select('*').eq('user_id', userId).order('plate', { ascending: true }),
+        supabase.from('maintenance').select('*').eq('user_id', userId).order('purchase_date', { ascending: false }),
+        supabase.from('jornada_logs').select('*').eq('user_id', userId).order('start_time', { ascending: false }),
+        supabase.from('notifications').select('*').or(`target_user_email.is.null,target_user_email.eq.${currentUser.email}`).order('created_at', { ascending: false })
       ]);
 
-      if (tripsRes.data) {
-        setTrips(tripsRes.data);
-        await offlineStorage.bulkSave('trips', tripsRes.data);
-      }
-      if (expensesRes.data) {
-        setExpenses(expensesRes.data);
-        await offlineStorage.bulkSave('expenses', expensesRes.data);
-      }
-      if (vehiclesRes.data) {
-        setVehicles(vehiclesRes.data);
-        await offlineStorage.bulkSave('vehicles', vehiclesRes.data);
-      }
-      if (maintenanceRes.data) {
-        setMaintenance(maintenanceRes.data);
-        await offlineStorage.bulkSave('maintenance', maintenanceRes.data);
-      }
-      if (jornadaRes.data) {
-        setJornadaLogs(jornadaRes.data);
-        await offlineStorage.bulkSave('jornada_logs', jornadaRes.data);
-      }
+      if (tripsRes.data) { setTrips(tripsRes.data); await offlineStorage.bulkSave('trips', tripsRes.data); }
+      if (expensesRes.data) { setExpenses(expensesRes.data); await offlineStorage.bulkSave('expenses', expensesRes.data); }
+      if (vehiclesRes.data) { setVehicles(vehiclesRes.data); await offlineStorage.bulkSave('vehicles', vehiclesRes.data); }
+      if (maintenanceRes.data) { setMaintenance(maintenanceRes.data); await offlineStorage.bulkSave('maintenance', maintenanceRes.data); }
+      if (jornadaRes.data) { setJornadaLogs(jornadaRes.data); await offlineStorage.bulkSave('jornada_logs', jornadaRes.data); }
       if (notificationsRes.data) setNotifications(notificationsRes.data);
 
     } catch (error) {
       console.error("Error fetching data:", error);
     }
-  }, [isOnline]);
+  }, [isOnline, authRole, currentUser]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (authRole === 'DRIVER') fetchData();
+  }, [fetchData, authRole]);
 
-  /**
-   * Generic handler for data actions (Create, Update, Delete).
-   * Supports offline queueing when connection is lost.
-   */
   const handleAction = async (table: string, data: any, action: 'insert' | 'update' | 'delete') => {
     setIsSaving(true);
     try {
@@ -149,71 +140,152 @@ const App: React.FC = () => {
         return;
       }
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Usuário não autenticado");
-
-      const payload = { ...data, user_id: user.id };
+      const userId = currentUser.id;
+      const payload = { ...data, user_id: userId };
       let response;
 
-      if (action === 'insert') {
-        response = await supabase.from(table).insert([payload]).select().single();
-      } else if (action === 'update') {
+      if (action === 'insert') response = await supabase.from(table).insert([payload]).select().single();
+      else if (action === 'update') {
         const { id, user_id, ...updateData } = payload;
         response = await supabase.from(table).update(updateData).eq('id', id).select().single();
-      } else if (action === 'delete') {
-        response = await supabase.from(table).delete().eq('id', data.id);
-      }
+      } else if (action === 'delete') response = await supabase.from(table).delete().eq('id', data.id);
 
       if (response?.error) throw response.error;
       await fetchData();
     } catch (error) {
       console.error(`Error in ${action} on ${table}:`, error);
-      alert("Erro ao salvar dados. Verifique sua conexão.");
+      alert("Erro ao salvar dados.");
     } finally {
       setIsSaving(false);
     }
   };
 
-  /**
-   * Synchronizes pending offline items when connection is restored.
-   */
-  const syncOfflineData = useCallback(async () => {
-    if (!isOnline) return;
-    const pending = await offlineStorage.getPendingSync();
-    if (pending.length === 0) return;
-
-    for (const item of pending) {
-      try {
-        await handleAction(item.table, item.data, item.action);
-        await offlineStorage.markAsSynced(item.id);
-      } catch (e) {
-        console.error("Sync error:", e);
+  const handleLogin = async () => {
+    if (!loginForm.email || !loginForm.password) return alert("Preencha e-mail e senha.");
+    setIsLoggingIn(true);
+    try {
+      if (loginMode === 'DRIVER') {
+        const { data, error } = await supabase.from('drivers').select('*').eq('email', loginForm.email.toLowerCase().trim()).eq('password', loginForm.password).maybeSingle();
+        if (error || !data) throw new Error("Credenciais de motorista inválidas.");
+        setCurrentUser(data);
+        setAuthRole('DRIVER');
+      } else {
+        // Admin Login Master
+        if (loginForm.email === 'admin@aurilog.com' && loginForm.password === 'admin123') {
+          setAuthRole('ADMIN');
+          setCurrentUser({ email: 'admin@aurilog.com', name: 'Gestor Master' });
+        } else {
+          throw new Error("Credenciais de administrador inválidas.");
+        }
       }
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setIsLoggingIn(false);
     }
-  }, [isOnline]);
-
-  useEffect(() => {
-    if (isOnline) syncOfflineData();
-  }, [isOnline, syncOfflineData]);
-
-  const SidebarItem = ({ view, icon: Icon, label }: { view: AppView, icon: any, label: string }) => (
-    <button
-      onClick={() => { setCurrentView(view); setIsMenuOpen(false); }}
-      className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${
-        currentView === view ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'
-      }`}
-    >
-      <Icon size={20} />
-      <span>{label}</span>
-    </button>
-  );
-
-  const handleLogout = () => {
-    supabase.auth.signOut().then(() => {
-      window.location.reload();
-    });
   };
 
+  const handleLogout = () => {
+    setAuthRole(null);
+    setCurrentUser(null);
+    setLoginForm({ email: '', password: '' });
+    // Ao deslogar motorista, sempre volta para o modo Admin por segurança
+    setLoginMode('ADMIN');
+    setIsDriverAppUnlocked(false);
+  };
+
+  const handleUnlockDriverApp = () => {
+    setAuthRole(null);
+    setCurrentUser(null);
+    setLoginForm({ email: '', password: '' });
+    setLoginMode('DRIVER');
+    setIsDriverAppUnlocked(true);
+  };
+
+  // TELA DE LOGIN (Portal Inicial)
+  if (!authRole) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 relative overflow-hidden font-['Plus_Jakarta_Sans']">
+        {/* Efeitos de Fundo */}
+        <div className="absolute inset-0 pointer-events-none opacity-20">
+          <div className={`absolute top-0 left-0 w-full h-full transition-all duration-1000 ${loginMode === 'ADMIN' ? 'bg-primary-900/40' : 'bg-emerald-900/40'}`}></div>
+          <div className="absolute top-[-20%] left-[-20%] w-[60%] h-[60%] bg-primary-600 rounded-full blur-[180px]"></div>
+          <div className="absolute bottom-[-20%] right-[-20%] w-[60%] h-[60%] bg-emerald-600 rounded-full blur-[180px]"></div>
+        </div>
+
+        <div className="w-full max-w-md relative z-10 space-y-10">
+          <div className="text-center animate-fade-in">
+             <div className="inline-block px-4 py-1 rounded-full bg-white/5 border border-white/10 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-6">
+                Sistema Logístico Master
+             </div>
+             <h1 className="text-6xl font-black tracking-tighter text-white leading-none">AURILOG</h1>
+             <p className="text-slate-500 font-bold uppercase tracking-widest text-xs mt-4">
+                {loginMode === 'ADMIN' ? 'Portal Gestão & Controle' : 'Acesso Operacional Driver'}
+             </p>
+          </div>
+
+          <div className="bg-white/5 backdrop-blur-3xl p-10 rounded-[4rem] border border-white/10 shadow-2xl space-y-8 animate-slide-up">
+            
+            {/* Status do Terminal */}
+            <div className={`p-4 rounded-2xl border text-[10px] font-black uppercase tracking-widest text-center ${loginMode === 'ADMIN' ? 'bg-amber-500/10 border-amber-500/30 text-amber-500' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500'}`}>
+               {loginMode === 'ADMIN' ? 'Terminal Bloqueado: Exige Gestor' : 'Terminal Liberado: Portal Condutor'}
+            </div>
+
+            <div className="space-y-4">
+              <div className="relative group">
+                <User className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-primary-400 transition-colors" size={20} />
+                <input 
+                  type="email" 
+                  placeholder={loginMode === 'ADMIN' ? "E-mail Administrativo" : "E-mail do Motorista"}
+                  className="w-full bg-white/5 border border-white/10 p-6 pl-14 rounded-3xl text-white outline-none focus:ring-4 focus:ring-primary-500/30 transition-all font-bold placeholder:text-slate-600"
+                  value={loginForm.email}
+                  onChange={e => setLoginForm({...loginForm, email: e.target.value})}
+                />
+              </div>
+              <div className="relative group">
+                <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-primary-400 transition-colors" size={20} />
+                <input 
+                  type="password" 
+                  placeholder="Senha secreta" 
+                  className="w-full bg-white/5 border border-white/10 p-6 pl-14 rounded-3xl text-white outline-none focus:ring-4 focus:ring-primary-500/30 transition-all font-bold placeholder:text-slate-600"
+                  value={loginForm.password}
+                  onChange={e => setLoginForm({...loginForm, password: e.target.value})}
+                />
+              </div>
+            </div>
+
+            <button 
+              onClick={handleLogin} 
+              disabled={isLoggingIn}
+              className={`w-full py-6 rounded-3xl font-black uppercase text-xs shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3 ${loginMode === 'ADMIN' ? 'bg-primary-600 text-white shadow-primary-600/30' : 'bg-emerald-600 text-white shadow-emerald-600/30'}`}
+            >
+              {isLoggingIn ? <Loader2 className="animate-spin" /> : loginMode === 'ADMIN' ? <ShieldCheck size={20} /> : <Truck size={20} />}
+              {loginMode === 'ADMIN' ? 'Autenticar Gestor' : 'Entrar no Painel Driver'}
+            </button>
+            
+            {loginMode === 'DRIVER' && (
+              <div className="text-center pt-2">
+                 <button onClick={() => { setLoginMode('ADMIN'); setIsDriverAppUnlocked(false); }} className="text-[10px] font-black text-slate-600 uppercase tracking-widest hover:text-white transition-colors flex items-center justify-center gap-2 mx-auto">
+                   <Lock size={12} /> Bloquear e voltar ao Admin
+                 </button>
+              </div>
+            )}
+          </div>
+          
+          <div className="text-center space-y-4 animate-fade-in">
+             <p className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">Tecnologia AuriLog Solutions v5.0</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // TELA ADMIN (Portal Master)
+  if (authRole === 'ADMIN') {
+    return <AdminPanel onRefresh={() => {}} onLogout={handleLogout} onUnlockDriverApp={handleUnlockDriverApp} />;
+  }
+
+  // TELA MOTORISTA (Visão Operacional)
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-['Plus_Jakarta_Sans']">
       {/* Mobile Top Header */}
@@ -230,60 +302,48 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      {/* Sidebar Navigation */}
+      {/* Sidebar Navigation - Exclusiva Motorista */}
       <div className={`${isMenuOpen ? 'fixed inset-0 z-40 bg-white' : 'hidden'} md:flex md:w-80 md:flex-col md:border-r md:bg-white p-6 md:sticky md:top-0 md:h-screen transition-all shadow-sm`}>
         <div className="hidden md:flex flex-col mb-10">
           <h1 className="text-3xl font-black tracking-tighter text-primary-600">AURILOG</h1>
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Gestão Logística Inteligente</p>
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Bem-vindo, {currentUser?.name?.split(' ')[0]}</p>
         </div>
 
         <div className="flex-1 flex flex-col gap-2 overflow-y-auto no-scrollbar">
-          <SidebarItem view={AppView.DASHBOARD} icon={LayoutDashboard} label="Dashboard" />
-          <SidebarItem view={AppView.TRIPS} icon={MapIcon} label="Viagens" />
-          <SidebarItem view={AppView.EXPENSES} icon={ReceiptText} label="Financeiro" />
-          <SidebarItem view={AppView.VEHICLES} icon={Truck} label="Frota" />
-          <SidebarItem view={AppView.MAINTENANCE} icon={Wrench} label="Manutenção" />
-          <SidebarItem view={AppView.CALCULATOR} icon={Calculator} label="Calculadora ANTT" />
-          <SidebarItem view={AppView.JORNADA} icon={Timer} label="Minha Jornada" />
-          <SidebarItem view={AppView.STATIONS} icon={MapPinned} label="Radar Estrada" />
-          <SidebarItem view={AppView.ADMIN} icon={ShieldAlert} label="Administração" />
+          <button onClick={() => { setCurrentView(AppView.DASHBOARD); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === AppView.DASHBOARD ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><LayoutDashboard size={20} /> Dashboard</button>
+          <button onClick={() => { setCurrentView(AppView.TRIPS); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === AppView.TRIPS ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><MapIcon size={20} /> Viagens</button>
+          <button onClick={() => { setCurrentView(AppView.EXPENSES); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === AppView.EXPENSES ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><ReceiptText size={20} /> Financeiro</button>
+          <button onClick={() => { setCurrentView(AppView.VEHICLES); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === AppView.VEHICLES ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><Truck size={20} /> Minha Frota</button>
+          <button onClick={() => { setCurrentView(AppView.MAINTENANCE); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === AppView.MAINTENANCE ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><Wrench size={20} /> Manutenção</button>
+          <button onClick={() => { setCurrentView(AppView.CALCULATOR); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === AppView.CALCULATOR ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><Calculator size={20} /> Cálculo ANTT</button>
+          <button onClick={() => { setCurrentView(AppView.JORNADA); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === AppView.JORNADA ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><Timer size={20} /> Jornada</button>
+          <button onClick={() => { setCurrentView(AppView.STATIONS); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === AppView.STATIONS ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><MapPinned size={20} /> Radar Estrada</button>
         </div>
 
         <div className="mt-6 pt-6 border-t space-y-4">
           <div className={`flex items-center gap-3 px-4 py-2 rounded-xl text-[10px] font-black uppercase ${isOnline ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
             {isOnline ? <Wifi size={16} /> : <WifiOff size={16} />}
-            {isOnline ? 'Online' : 'Modo Offline'}
+            {isOnline ? 'Conectado' : 'Modo Offline'}
           </div>
           <button onClick={handleLogout} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase text-rose-500 hover:bg-rose-50 transition-all">
-            <LogOut size={20} /> Sair
+            <LogOut size={20} /> Encerrar Sessão
           </button>
         </div>
       </div>
 
-      {/* Main View Router */}
-      <main className="flex-1 p-4 md:p-10">
+      <main className="flex-1 p-4 md:p-10 overflow-y-auto">
         <div className="max-w-7xl mx-auto">
           {currentView === AppView.DASHBOARD && <Dashboard trips={trips} expenses={expenses} maintenance={maintenance} vehicles={vehicles} onSetView={setCurrentView} />}
-          
           {currentView === AppView.TRIPS && <TripManager trips={trips} vehicles={vehicles} expenses={expenses} onAddTrip={(t) => handleAction('trips', t, 'insert')} onUpdateTrip={(id, t) => handleAction('trips', { ...t, id }, 'update')} onUpdateStatus={async (id, s, km) => { await handleAction('trips', { id, status: s }, 'update'); if (km) { const trip = trips.find(x => x.id === id); if (trip?.vehicle_id) await handleAction('vehicles', { id: trip.vehicle_id, current_km: km }, 'update'); } }} onDeleteTrip={(id) => handleAction('trips', { id }, 'delete')} isSaving={isSaving} isOnline={isOnline} />}
-          
           {currentView === AppView.EXPENSES && <ExpenseManager expenses={expenses} trips={trips} vehicles={vehicles} onAddExpense={(e) => handleAction('expenses', e, 'insert')} onUpdateExpense={(id, e) => handleAction('expenses', { ...e, id }, 'update')} onDeleteExpense={(id) => handleAction('expenses', { id }, 'delete')} isSaving={isSaving} />}
-          
           {currentView === AppView.VEHICLES && <VehicleManager vehicles={vehicles} onAddVehicle={(v) => handleAction('vehicles', v, 'insert')} onUpdateVehicle={(id, v) => handleAction('vehicles', { ...v, id }, 'update')} onDeleteVehicle={(id) => handleAction('vehicles', { id }, 'delete')} isSaving={isSaving} />}
-          
           {currentView === AppView.MAINTENANCE && <MaintenanceManager maintenance={maintenance} vehicles={vehicles} onAddMaintenance={(m) => handleAction('maintenance', m, 'insert')} onDeleteMaintenance={(id) => handleAction('maintenance', { id }, 'delete')} isSaving={isSaving} />}
-          
           {currentView === AppView.CALCULATOR && <FreightCalculator />}
-          
-          {currentView === AppView.JORNADA && <JornadaManager mode={jornadaMode} startTime={jornadaStartTime} currentTime={jornadaCurrentTime} logs={jornadaLogs} setMode={setJornadaMode} setStartTime={setStartTime => setJornadaStartTime(setStartTime)} onSaveLog={(l) => handleAction('jornada_logs', l, 'insert')} onDeleteLog={(id) => handleAction('jornada_logs', { id }, 'delete')} onClearHistory={async () => {}} addGlobalNotification={() => {}} isSaving={isSaving} />}
-          
+          {currentView === AppView.JORNADA && <JornadaManager mode={jornadaMode} startTime={jornadaStartTime} currentTime={jornadaCurrentTime} logs={jornadaLogs} setMode={setJornadaMode} setStartTime={setJornadaStartTime} onSaveLog={(l) => handleAction('jornada_logs', l, 'insert')} onDeleteLog={(id) => handleAction('jornada_logs', { id }, 'delete')} onClearHistory={async () => {}} addGlobalNotification={() => {}} isSaving={isSaving} />}
           {currentView === AppView.STATIONS && <StationLocator />}
-          
-          {currentView === AppView.ADMIN && <AdminPanel onRefresh={fetchData} onLogout={handleLogout} />}
         </div>
       </main>
 
-      {/* Global Notifications Panel */}
       {showNotifications && (
         <NotificationCenter 
           notifications={notifications as any} 
