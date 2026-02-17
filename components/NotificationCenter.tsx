@@ -61,7 +61,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notifica
                 <div className="flex gap-4">
                   <div className={`p-4 rounded-2xl shrink-0 h-fit ${
                     n.type === 'URGENT' ? 'bg-rose-100 text-rose-600' : 
-                    n.type === 'WARNING' ? 'bg-amber-100 text-amber-600' : 'bg-blue-50 text-blue-400'
+                    n.type === 'WARNING' ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-400'
                   }`}>
                     {n.type === 'URGENT' ? <ShieldAlert size={24} /> : <Info size={24} />}
                   </div>
@@ -77,12 +77,12 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notifica
                     
                     <p className="text-xs text-slate-500 font-medium leading-relaxed mb-2">{n.message}</p>
                     
-                    <div className="flex items-center gap-2 text-[8px] font-black text-slate-400 uppercase tracking-widest">
+                    <div className="flex items-center gap-2 text-[8px] font-black text-slate-400 uppercase tracking-widest mt-2">
                        <span>{n.date}</span>
                        {n.target_user_email && (
                          <>
                            <span className="text-slate-200">•</span>
-                           <span className="text-primary-400">PARA: {n.target_user_email}</span>
+                           <span className="text-primary-600">PARA: {n.target_user_email.toUpperCase()}</span>
                          </>
                        )}
                     </div>
