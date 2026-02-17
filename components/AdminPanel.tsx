@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Send, Bell, MapPin, Loader2, ShieldAlert, Trash2, CheckCircle2, Store, Fuel, Wrench, Hammer, User, Mail, Plus, ExternalLink, RefreshCcw, MapPinHouse, Utensils, Edit2, Tag, X, History, MessageSquareQuote, LogOut, RotateCcw, MapPinned, Radar, Navigation, Signal, ChevronRight, Search, LayoutDashboard, Truck, Wallet, CheckSquare, Eye, AlertTriangle, Info, ShieldCheck, Globe, Users, KeyRound, UserPlus, UserCheck, Briefcase } from 'lucide-react';
+import { Send, Bell, MapPin, Loader2, ShieldAlert, Trash2, CheckCircle2, Store, Fuel, Wrench, Hammer, User, Mail, Plus, ExternalLink, RefreshCcw, MapPinHouse, Utensils, Edit2, Tag, X, History, MessageSquareQuote, LogOut, RotateCcw, MapPinned, Radar, Navigation, Signal, ChevronRight, Search, LayoutDashboard, Truck, Wallet, CheckSquare, Eye, AlertTriangle, Info, ShieldCheck, Globe, Users, KeyRound, UserPlus, UserCheck } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { RoadService, DbNotification, UserLocation, Trip, Expense, Vehicle, MaintenanceItem, Driver } from '../types';
 
@@ -106,11 +106,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
     if (!driverForm.name || !driverForm.email || !driverForm.password) return alert("Preencha todos os campos.");
     setLoading(true);
     try {
-      // 1. No Supabase real, criaríamos o usuário no Auth via Edge Function.
-      // Aqui, adicionamos à tabela de registro oficial de motoristas.
       const { error } = await supabase.from('drivers').insert([{
         name: driverForm.name,
         email: driverForm.email.toLowerCase().trim(),
+        password: driverForm.password,
         status: 'Ativo'
       }]);
 
@@ -132,20 +131,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
   const handleDeleteDriver = async (id: string) => {
     if (!confirm("Remover este motorista do sistema?")) return;
     const { error } = await supabase.from('drivers').delete().eq('id', id);
-    if (!error) fetchDrivers();
+    if (!error) {
+      setDrivers(prev => prev.filter(d => d.id !== id));
+      if (selectedDriver?.id === id) setSelectedDriver(null);
+    }
   };
 
   const fetchExplorerData = async (userEmail: string) => {
     setExplorerLoading(true);
     try {
-      // Como as viagens/despesas são vinculadas ao user_id (UUID do Auth),
-      // precisamos primeiro descobrir o ID do usuário através do e-mail nas localizações
-      // ou assumindo que o e-mail no cadastro é o mesmo do login.
-      const { data: locData } = await supabase.from('user_locations').select('user_id').eq('email', userEmail).single();
+      const { data: locData } = await supabase.from('user_locations').select('user_id').eq('email', userEmail).maybeSingle();
       
       if (!locData) {
-         alert("Este motorista ainda não realizou o primeiro acesso ao aplicativo.");
+         alert("Este motorista ainda não realizou o primeiro acesso ao aplicativo para vincular dados.");
          setExplorerLoading(false);
+         setExplorerData(null);
          return;
       }
 
@@ -184,8 +184,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
   const fetchCategories = async () => {
     const { data } = await supabase.from('road_services').select('type');
     if (data) {
-      const uniqueTypes = Array.from(new Set(data.map(i => i.type)));
-      if (uniqueTypes.length > 0) setCategories(prev => Array.from(new Set([...prev, ...uniqueTypes])));
+      // Fix: Use explicit type mapping to avoid unknown[] issues with Set and Array.from when using an untyped supabase client
+      const uniqueTypes = Array.from(new Set(data.map((i: any) => i.type as string)));
+      // Fix: Cast the result of the state update callback to string[] to satisfy React's state setter type requirements
+      if (uniqueTypes.length > 0) setCategories(prev => Array.from(new Set([...prev, ...uniqueTypes])) as string[]);
     }
   };
 
@@ -245,7 +247,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
     } catch (err: any) { alert(err.message); } finally { setLoading(false); }
   };
 
-  // Fix: Implemented handleDeleteService to remove a road service
   const handleDeleteService = async (id: string) => {
     if (!confirm("Excluir este parceiro?")) return;
     const { error } = await supabase.from('road_services').delete().eq('id', id);
@@ -253,7 +254,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
     else alert("Erro ao excluir serviço: " + error.message);
   };
 
-  // Fix: Implemented handleAddCategory to add new service categories
   const handleAddCategory = () => {
     if (!newCategory.trim()) return;
     if (categories.includes(newCategory.trim())) {
@@ -289,7 +289,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
         <div className="w-full lg:w-auto">
           <h2 className="text-2xl md:text-4xl font-black text-slate-900 tracking-tighter uppercase leading-none">Painel Administrativo</h2>
           <p className="text-slate-400 font-bold text-[10px] md:text-xs uppercase tracking-widest mt-2 flex items-center gap-2">
-            <ShieldAlert size={16} className="text-primary-600" /> AuriLog Fleet Management
+            <ShieldAlert size={16} className="text-primary-600" /> AuriLog Master Control
           </p>
         </div>
         <div className="flex flex-wrap gap-2 w-full lg:w-auto">
@@ -302,9 +302,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
         </div>
       </div>
 
-      {/* Tabs - Adicionado DRIVERS */}
+      {/* Tabs */}
       <div className="flex flex-wrap bg-slate-200 p-1 rounded-2xl md:rounded-[2rem] gap-1 w-full md:max-w-5xl mx-auto overflow-x-auto no-scrollbar">
-        <button onClick={() => setActiveTab('LOCATIONS')} className={`flex-1 min-w-[100px] px-3 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-[8px] md:text-[10px] uppercase tracking-widest transition-all ${activeTab === 'LOCATIONS' ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-700'}`}>Equipe</button>
+        <button onClick={() => setActiveTab('LOCATIONS')} className={`flex-1 min-w-[100px] px-3 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-[8px] md:text-[10px] uppercase tracking-widest transition-all ${activeTab === 'LOCATIONS' ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-700'}`}>Frota</button>
         <button onClick={() => setActiveTab('DRIVERS')} className={`flex-1 min-w-[100px] px-3 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-[8px] md:text-[10px] uppercase tracking-widest transition-all ${activeTab === 'DRIVERS' ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-700'}`}>Motoristas</button>
         <button onClick={() => setActiveTab('EXPLORER')} className={`flex-1 min-w-[100px] px-3 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-[8px] md:text-[10px] uppercase tracking-widest transition-all ${activeTab === 'EXPLORER' ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-700'}`}>Explorar</button>
         <button onClick={() => setActiveTab('ALERTS')} className={`flex-1 min-w-[100px] px-3 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-[8px] md:text-[10px] uppercase tracking-widest transition-all ${activeTab === 'ALERTS' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Alertas</button>
@@ -314,12 +314,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
 
       <div className="grid grid-cols-1 gap-6">
         
-        {/* FROTA / MONITORAMENTO - Atualizado para mostrar todos os motoristas cadastrados */}
+        {/* EQUIPE EM CAMPO (FROTA) */}
         {activeTab === 'LOCATIONS' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
              <div className="lg:col-span-4 bg-white p-6 rounded-[2.5rem] border shadow-sm flex flex-col h-[700px]">
                 <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-sm font-black uppercase tracking-tight text-slate-900">LISTA DE CONDUTORES</h3>
+                  <h3 className="text-sm font-black uppercase tracking-tight text-slate-900">EQUIPE REGISTRADA</h3>
                   <button onClick={() => { fetchLocations(); fetchDrivers(); }} className="p-2 bg-slate-50 text-slate-400 hover:text-primary-600 rounded-full transition-all">
                     <RefreshCcw size={16} />
                   </button>
@@ -370,9 +370,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
              <div className="lg:col-span-8 space-y-6">
                 <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100 flex flex-col md:flex-row items-center justify-between gap-6">
                    <div>
-                      <h3 className="text-2xl font-black text-slate-900 tracking-tighter uppercase leading-none">Status da Frota</h3>
+                      <h3 className="text-2xl font-black text-slate-900 tracking-tighter uppercase leading-none">Monitoramento da Frota</h3>
                       <p className="text-slate-400 font-bold text-xs mt-2 uppercase tracking-widest">
-                         Exibindo {drivers.length} motoristas registrados.
+                         Visualizando sinal de GPS dos motoristas ativos.
                       </p>
                    </div>
                    <button onClick={openCollectiveTracking} className="bg-slate-950 text-white px-8 py-5 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl hover:bg-black transition-all">
@@ -395,7 +395,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                           {selectedDriver ? `Sem sinal de GPS de ${selectedDriver.name}` : 'Selecione um motorista para localizar'}
                         </h4>
                         <p className="text-slate-300 font-bold text-sm mt-2 max-w-xs">
-                          {selectedDriver ? 'O motorista pode estar offline ou não autorizou o rastreamento.' : 'Clique em um dos nomes à esquerda para focar no GPS dele.'}
+                          {selectedDriver ? 'O motorista pode estar offline ou não autorizou o rastreamento via app.' : 'Clique em um dos nomes à esquerda para focar no GPS dele.'}
                         </p>
                      </div>
                    )}
@@ -404,7 +404,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
           </div>
         )}
 
-        {/* NOVO: GESTÃO DE MOTORISTAS */}
+        {/* GESTÃO DE MOTORISTAS */}
         {activeTab === 'DRIVERS' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fade-in">
              <div className="lg:col-span-5">
@@ -429,7 +429,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                         <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Senha de Acesso</label>
                         <div className="relative">
                            <KeyRound className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
-                           <input required type="password" placeholder="••••••••" className="w-full p-5 pl-14 bg-slate-50 border border-slate-100 rounded-3xl font-bold outline-none focus:ring-2 focus:ring-primary-500 transition-all" value={driverForm.password} onChange={e => setDriverForm({...driverForm, password: e.target.value})} />
+                           <input required type="text" placeholder="Senha provisória" className="w-full p-5 pl-14 bg-slate-50 border border-slate-100 rounded-3xl font-bold outline-none focus:ring-2 focus:ring-primary-500 transition-all" value={driverForm.password} onChange={e => setDriverForm({...driverForm, password: e.target.value})} />
                         </div>
                       </div>
                       <button disabled={loading} type="submit" className="w-full py-6 bg-slate-900 text-white rounded-3xl font-black uppercase text-xs shadow-xl flex items-center justify-center gap-3 transition-all active:scale-95">
@@ -465,7 +465,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
           </div>
         )}
 
-        {/* EXPLORADOR DE DADOS - Atualizado para usar a lista oficial */}
+        {/* EXPLORADOR DE DADOS */}
         {activeTab === 'EXPLORER' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fade-in">
              <div className="lg:col-span-4">
@@ -486,7 +486,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                 </div>
              </div>
              <div className="lg:col-span-8">
-                {explorerLoading ? <Loader2 className="animate-spin mx-auto mt-20 text-primary-600" size={64} /> : explorerData && (
+                {explorerLoading ? <Loader2 className="animate-spin mx-auto mt-20 text-primary-600" size={64} /> : explorerData ? (
                   <div className="space-y-6">
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                        <div className="bg-white p-6 rounded-3xl border shadow-sm">
@@ -531,8 +531,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                        </div>
                     </div>
                   </div>
-                )}
-                {!explorerData && !explorerLoading && (
+                ) : (
                   <div className="h-[400px] flex flex-col items-center justify-center bg-white rounded-[3rem] border border-dashed border-slate-200">
                      <LayoutDashboard size={64} className="text-slate-100 mb-4" />
                      <p className="text-slate-300 font-black uppercase text-xs">Selecione um motorista para iniciar a auditoria</p>
@@ -542,7 +541,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
           </div>
         )}
 
-        {/* ALERTAS - Atualizado para usar os e-mails dos motoristas registrados */}
+        {/* ALERTAS */}
         {activeTab === 'ALERTS' && (
           <div className="space-y-6 md:space-y-10">
             <div className="max-w-4xl mx-auto w-full bg-white p-6 md:p-10 rounded-3xl md:rounded-[3.5rem] border shadow-sm">
@@ -635,7 +634,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
           </div>
         )}
 
-        {/* CATEGORIAS E SERVIÇOS - Mantidos mas agora integrados visualmente */}
+        {/* CATEGORIAS */}
         {activeTab === 'CATEGORIES' && (
           <div className="max-w-2xl mx-auto w-full space-y-6 md:space-y-8 animate-fade-in">
             <div className="bg-white p-6 md:p-10 rounded-3xl md:rounded-[3.5rem] border shadow-sm">
@@ -648,7 +647,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                 {categories.map(cat => (
                   <div key={cat} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 group transition-all hover:bg-white hover:border-slate-200">
                     <span className="font-bold text-slate-700 text-xs">{cat}</span>
-                    <button onClick={() => { if(confirm(`Remover "${cat}"?`)) setCategories(categories.filter(c => c !== cat)) }} className="text-slate-300 hover:text-rose-500 p-2 transition-all">
+                    <button onClick={() => setCategories(categories.filter(c => c !== cat))} className="text-slate-300 hover:text-rose-500 p-2 transition-all">
                       <Trash2 size={16} />
                     </button>
                   </div>
@@ -658,6 +657,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
           </div>
         )}
 
+        {/* SERVIÇOS */}
         {activeTab === 'SERVICES' && (
           <div className="flex flex-col lg:grid lg:grid-cols-12 gap-8 animate-fade-in">
             <div className="lg:col-span-5 bg-white p-6 md:p-8 rounded-3xl border shadow-sm h-fit">
