@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { X, Bell, AlertTriangle, Clock, Calendar, Gauge, CreditCard, CheckCircle2, ChevronRight, Trash2, MessageCircle } from 'lucide-react';
+import { X, Bell, AlertTriangle, Clock, Calendar, Gauge, CreditCard, CheckCircle2, ChevronRight, Trash2, MessageCircle, Info, ShieldAlert } from 'lucide-react';
 
 interface Notification {
   id: string;
@@ -9,6 +9,7 @@ interface Notification {
   message: string;
   category: 'JORNADA' | 'MAINTENANCE' | 'FINANCE' | 'TRIP' | 'GENERAL';
   date: string;
+  target_user_email?: string;
 }
 
 interface NotificationCenterProps {
@@ -58,29 +59,33 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notifica
                 onClick={() => { if (n.category !== 'GENERAL') { onAction(n.category); onClose(); } }}
               >
                 <div className="flex gap-4">
-                  <div className={`p-4 rounded-2xl shrink-0 ${
+                  <div className={`p-4 rounded-2xl shrink-0 h-fit ${
                     n.type === 'URGENT' ? 'bg-rose-100 text-rose-600' : 
-                    n.type === 'WARNING' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'
+                    n.type === 'WARNING' ? 'bg-amber-100 text-amber-600' : 'bg-blue-50 text-blue-400'
                   }`}>
-                    {n.category === 'JORNADA' && <Clock size={24} />}
-                    {n.category === 'MAINTENANCE' && <Gauge size={24} />}
-                    {n.category === 'FINANCE' && <CreditCard size={24} />}
-                    {n.category === 'TRIP' && <Calendar size={24} />}
-                    {(n.category === 'GENERAL' || !n.category) && <MessageCircle size={24} />}
+                    {n.type === 'URGENT' ? <ShieldAlert size={24} /> : <Info size={24} />}
                   </div>
                   
                   <div className="flex-1 pr-8">
-                    <div className="flex justify-between items-start mb-1">
-                      <span className={`text-[9px] font-black uppercase tracking-widest ${
-                        n.type === 'URGENT' ? 'text-rose-500' : 
-                        n.type === 'WARNING' ? 'text-amber-500' : 'text-blue-500'
-                      }`}>
-                        {n.category === 'GENERAL' ? 'AVISO GERAL' : n.category} • {n.type === 'URGENT' ? 'URGENTE' : 'AVISO'}
-                      </span>
-                      <span className="text-[9px] font-bold text-slate-400 uppercase whitespace-nowrap">{n.date}</span>
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <h4 className="font-black text-slate-900 text-sm uppercase tracking-tighter">{n.title}</h4>
+                      <span className="text-[7px] font-black px-2 py-0.5 rounded-full bg-slate-200 text-slate-500 uppercase tracking-widest">{n.category || 'GERAL'}</span>
+                      {n.target_user_email && (
+                        <span className="text-[7px] font-black px-2 py-0.5 rounded-full bg-primary-100 text-primary-600 uppercase tracking-widest">PRIVADO</span>
+                      )}
                     </div>
-                    <h4 className="font-black text-slate-800 leading-tight mb-1">{n.title}</h4>
-                    <p className="text-xs text-slate-500 font-medium leading-relaxed">{n.message}</p>
+                    
+                    <p className="text-xs text-slate-500 font-medium leading-relaxed mb-2">{n.message}</p>
+                    
+                    <div className="flex items-center gap-2 text-[8px] font-black text-slate-400 uppercase tracking-widest">
+                       <span>{n.date}</span>
+                       {n.target_user_email && (
+                         <>
+                           <span className="text-slate-200">•</span>
+                           <span className="text-primary-400">PARA: {n.target_user_email}</span>
+                         </>
+                       )}
+                    </div>
                   </div>
                 </div>
                 

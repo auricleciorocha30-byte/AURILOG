@@ -198,12 +198,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
   };
 
   const isDriverOnline = (updatedAt: string) => {
-    return (Date.now() - new Date(updatedAt).getTime()) < 300000; // 5 minutos para considerar online no painel
+    return (Date.now() - new Date(updatedAt).getTime()) < 600000; // 10 minutos para considerar online no painel
   };
 
   const filteredLocations = driverLocations.filter(loc => 
     loc.email.toLowerCase().includes(locationSearch.toLowerCase())
   );
+
+  const openCollectiveTracking = () => {
+    const onlineDrivers = driverLocations.filter(loc => isDriverOnline(loc.updated_at));
+    if (onlineDrivers.length === 0) return alert("Nenhum motorista online no momento.");
+    const avgLat = onlineDrivers.reduce((a, b) => a + b.latitude, 0) / onlineDrivers.length;
+    const avgLng = onlineDrivers.reduce((a, b) => a + b.longitude, 0) / onlineDrivers.length;
+    window.open(`https://www.google.com/maps/@${avgLat},${avgLng},12z`, '_blank');
+  };
 
   return (
     <div className="max-w-7xl mx-auto space-y-4 md:space-y-8 animate-fade-in py-6 md:py-12 px-4 pb-32">
@@ -235,10 +243,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
       </div>
 
       <div className="grid grid-cols-1 gap-6">
-        {/* FROTA / MONITORAMENTO (Design da Imagem Sugerida) */}
+        {/* FROTA / MONITORAMENTO */}
         {activeTab === 'LOCATIONS' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-             {/* Coluna Esquerda: Equipe em Campo */}
              <div className="lg:col-span-4 bg-white p-6 rounded-[2.5rem] border shadow-sm flex flex-col h-[700px]">
                 <div className="flex justify-between items-center mb-6">
                   <h3 className="text-sm font-black uppercase tracking-tight text-slate-900">EQUIPE EM CAMPO</h3>
@@ -293,7 +300,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                 </div>
              </div>
 
-             {/* Coluna Direita: Mapa e Resumo (Card da Imagem) */}
              <div className="lg:col-span-8 space-y-6">
                 <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100 flex flex-col md:flex-row items-center justify-between gap-6">
                    <div>
@@ -302,7 +308,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                          Visualizando todos os {filteredLocations.filter(l => isDriverOnline(l.updated_at)).length} motoristas ativos agora.
                       </p>
                    </div>
-                   <button className="bg-slate-950 text-white px-8 py-5 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl hover:bg-black transition-all">
+                   <button onClick={openCollectiveTracking} className="bg-slate-950 text-white px-8 py-5 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl hover:bg-black transition-all">
                       <ExternalLink size={18} /> LINK DO RASTREIO COLETIVO
                    </button>
                 </div>
@@ -316,19 +322,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                      />
                    ) : (
                      <div className="h-full flex flex-col items-center justify-center bg-slate-50 p-12 text-center">
-                        <div className="w-24 h-24 bg-primary-50 rounded-full flex items-center justify-center mb-8">
-                           <MapPin size={48} className="text-primary-400" />
-                        </div>
-                        <h4 className="text-2xl font-black text-slate-900 tracking-tighter uppercase">Mapa de Atividade em Tempo Real</h4>
-                        <p className="text-slate-400 font-bold text-sm max-w-sm mt-2">Selecione um motorista à esquerda para focar na localização exata ou veja o histórico global da equipe.</p>
-                        
-                        <div className="mt-10 p-6 bg-white rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
-                           <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-black">C</div>
-                           <div className="text-left">
-                              <p className="font-black text-xs text-slate-800">CELIO</p>
-                              <p className="text-[9px] font-bold text-slate-400">Há 24 min</p>
-                           </div>
-                        </div>
+                        {driverLocations.filter(l => isDriverOnline(l.updated_at)).length > 0 ? (
+                           <iframe 
+                             title="Collective Map" 
+                             className="w-full h-full border-0" 
+                             src={`https://www.google.com/maps?q=${driverLocations.filter(l => isDriverOnline(l.updated_at))[0].latitude},${driverLocations.filter(l => isDriverOnline(l.updated_at))[0].longitude}&z=10&output=embed`} 
+                           />
+                        ) : (
+                          <>
+                            <div className="w-24 h-24 bg-primary-50 rounded-full flex items-center justify-center mb-8">
+                               <MapPin size={48} className="text-primary-400" />
+                            </div>
+                            <h4 className="text-2xl font-black text-slate-900 tracking-tighter uppercase">Mapa de Atividade em Tempo Real</h4>
+                            <p className="text-slate-400 font-bold text-sm max-w-sm mt-2">Selecione um motorista à esquerda para focar na localização exata ou veja o histórico global da equipe.</p>
+                          </>
+                        )}
                      </div>
                    )}
                 </div>
@@ -362,7 +370,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                   <div className="h-[400px] flex items-center justify-center bg-white rounded-[3rem] border"><Loader2 className="animate-spin text-primary-600" size={48} /></div>
                 ) : explorerData && explorerDriverId ? (
                   <div className="space-y-6">
-                    {/* Resumo Explorador */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                        <div className="bg-white p-6 rounded-3xl border shadow-sm">
                           <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Veículos</p>
@@ -425,7 +432,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                 <form onSubmit={handleSendAlert} className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Destino (Público ou Privado)</label>
+                      <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Destino (E-mail Privado ou Todos)</label>
                       <div className="relative">
                         <select className="w-full p-4 md:p-5 bg-slate-50 border border-slate-100 rounded-2xl md:rounded-3xl font-bold outline-none text-xs appearance-none" value={alertForm.target_user_email} onChange={e => setAlertForm({...alertForm, target_user_email: e.target.value})}>
                             <option value="">TODOS OS MOTORISTAS (Público)</option>
@@ -476,20 +483,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
               <h3 className="text-lg font-black uppercase px-2 flex items-center gap-2"><History size={20} className="text-primary-600" /> Histórico de Disparos</h3>
               <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar border-t pt-4">
                 {sentNotifications.map(n => (
-                  <div key={n.id} className={`bg-white p-5 rounded-3xl border-2 shadow-sm flex items-start justify-between gap-4 group transition-all ${n.type === 'URGENT' ? 'border-rose-100' : n.type === 'WARNING' ? 'border-amber-100' : 'border-slate-50'}`}>
+                  <div key={n.id} className={`bg-white p-6 rounded-[2rem] border-2 shadow-sm flex items-start justify-between gap-4 group transition-all ${n.type === 'URGENT' ? 'border-rose-100' : n.type === 'WARNING' ? 'border-amber-100' : 'border-slate-50'}`}>
                     <div className="flex gap-4 overflow-hidden">
-                       <div className={`p-4 rounded-2xl shrink-0 ${n.type === 'URGENT' ? 'bg-rose-50 text-rose-500' : n.type === 'WARNING' ? 'bg-amber-50 text-amber-500' : 'bg-slate-50 text-slate-400'}`}>
-                         {n.type === 'URGENT' ? <ShieldAlert size={20}/> : n.type === 'WARNING' ? <AlertTriangle size={20}/> : <Info size={20}/>}
+                       <div className={`p-4 rounded-2xl shrink-0 h-fit ${n.type === 'URGENT' ? 'bg-rose-50 text-rose-500' : n.type === 'WARNING' ? 'bg-amber-50 text-amber-500' : 'bg-slate-50 text-slate-400'}`}>
+                         {n.type === 'URGENT' ? <ShieldAlert size={20}/> : <Info size={20}/>}
                        </div>
                        <div className="overflow-hidden">
-                         <div className="flex items-center gap-2 mb-1">
+                         <div className="flex flex-wrap items-center gap-2 mb-1">
                             <h4 className="font-black text-slate-900 uppercase text-xs truncate">{n.title}</h4>
                             <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 uppercase">{n.category}</span>
-                            {n.target_user_email && <span className="text-[7px] font-black bg-primary-100 text-primary-600 px-2 py-0.5 rounded-full uppercase">Privado</span>}
+                            {n.target_user_email && <span className="text-[7px] font-black bg-primary-100 text-primary-600 px-2 py-0.5 rounded-full uppercase tracking-widest">PRIVADO</span>}
                          </div>
-                         <p className="text-[10px] text-slate-500 font-medium line-clamp-2 leading-relaxed">{n.message}</p>
-                         <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mt-2">
-                           {new Date(n.created_at).toLocaleString()} {n.target_user_email && `• Para: ${n.target_user_email}`}
+                         <p className="text-[10px] text-slate-500 font-medium line-clamp-2 leading-relaxed mb-3">{n.message}</p>
+                         <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                           <span>{new Date(n.created_at).toLocaleString()}</span>
+                           {n.target_user_email && (
+                             <>
+                               <span className="text-slate-200">•</span>
+                               <span className="text-primary-600">PARA: {n.target_user_email}</span>
+                             </>
+                           )}
                          </p>
                        </div>
                     </div>
@@ -503,8 +516,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
             </div>
           </div>
         )}
-
-        {/* CATEGORIAS */}
+        
+        {/* CATEGORIAS & SERVIÇOS (continuação omitida por brevidade, permanecem os mesmos) */}
         {activeTab === 'CATEGORIES' && (
           <div className="max-w-2xl mx-auto w-full space-y-6 md:space-y-8 animate-fade-in">
             <div className="bg-white p-6 md:p-10 rounded-3xl md:rounded-[3.5rem] border shadow-sm">
@@ -527,7 +540,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
           </div>
         )}
 
-        {/* SERVIÇOS */}
         {activeTab === 'SERVICES' && (
           <div className="flex flex-col lg:grid lg:grid-cols-12 gap-8">
             <div className="lg:col-span-5 bg-white p-6 md:p-8 rounded-3xl border shadow-sm h-fit">

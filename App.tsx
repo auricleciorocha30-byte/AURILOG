@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { LayoutDashboard, Truck, Wallet, Calculator, Menu, X, LogOut, Bell, Settings, CheckSquare, Timer, Fuel, Loader2, Mail, Key, UserPlus, LogIn, AlertCircle, Share2, AlertTriangle, KeyRound, Wifi, WifiOff, CloudUpload, CheckCircle2, Coffee, Play, RefreshCcw, Undo2, Send, Clock, ShieldAlert, MapPinHouse, Lock, ShieldCheck, Smartphone, Download, MapPin } from 'lucide-react';
 import { Dashboard } from './components/Dashboard';
 import { TripManager } from './components/TripManager';
@@ -57,35 +57,53 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : [];
   });
 
+  const watchId = useRef<number | null>(null);
+
   useEffect(() => {
     localStorage.setItem('aurilog_dismissed_notifications', JSON.stringify(dismissedNotificationIds));
   }, [dismissedNotificationIds]);
 
-  // Serviço de Rastreamento de Localização (Usuário)
+  // Serviço de Rastreamento de Localização Otimizado
   useEffect(() => {
     if (!session?.user || !isUserMode || !navigator.geolocation) return;
 
-    const updateLocation = () => {
-      navigator.geolocation.getCurrentPosition(
+    const startTracking = () => {
+      watchId.current = navigator.geolocation.watchPosition(
         async (pos) => {
           try {
-            await supabase.from('user_locations').upsert({
+            const { error: upsertError } = await supabase.from('user_locations').upsert({
               user_id: session.user.id,
               email: session.user.email,
               latitude: pos.coords.latitude,
               longitude: pos.coords.longitude,
               updated_at: new Date().toISOString()
             });
-          } catch (e) { console.error("Location track error:", e); }
+            if (upsertError) console.error("Erro ao enviar localização:", upsertError);
+          } catch (e) {
+            console.error("Localização track error:", e);
+          }
         },
-        (err) => console.log("Geolocation error:", err),
-        { enableHighAccuracy: true }
+        (err) => {
+          console.warn("Geolocation watch error:", err.message);
+          if (err.code === 1) { // PERMISSION_DENIED
+            console.error("Permissão de localização negada pelo usuário.");
+          }
+        },
+        { 
+          enableHighAccuracy: true, 
+          timeout: 20000, 
+          maximumAge: 10000 
+        }
       );
     };
 
-    updateLocation(); // Primeira execução
-    const interval = setInterval(updateLocation, 30000); // A cada 30 segundos
-    return () => clearInterval(interval);
+    startTracking();
+
+    return () => {
+      if (watchId.current !== null) {
+        navigator.geolocation.clearWatch(watchId.current);
+      }
+    };
   }, [session, isUserMode]);
 
   // Real-time listener para alertas administrativos e sincronização global
