@@ -18,6 +18,14 @@ export enum TripStatus {
   CANCELLED = 'Cancelada'
 }
 
+export interface Driver {
+  id: string;
+  name: string;
+  email: string;
+  status: string;
+  created_at: string;
+}
+
 export interface Vehicle {
   id: string;
   plate: string;
@@ -32,7 +40,7 @@ export interface Vehicle {
 export interface RoadService {
   id: string;
   name: string;
-  type: 'stations' | 'tire_repair' | 'mechanic' | 'restaurants' | 'store';
+  type: string;
   description: string;
   location_url: string;
   phone: string;
