@@ -22,7 +22,6 @@ import {
   Wrench, 
   Timer, 
   MapPinned, 
-  ShieldAlert, 
   Bell,
   Wifi,
   WifiOff,
@@ -30,20 +29,15 @@ import {
   Menu,
   X,
   User,
-  KeyRound,
   ShieldCheck,
-  ChevronRight,
   Loader2,
   Lock,
-  Smartphone,
-  Building2,
   Unlock
 } from 'lucide-react';
 
 const App: React.FC = () => {
   const [authRole, setAuthRole] = useState<'DRIVER' | 'ADMIN' | null>(null);
   const [loginMode, setLoginMode] = useState<'ADMIN' | 'DRIVER'>('ADMIN');
-  const [isDriverAppUnlocked, setIsDriverAppUnlocked] = useState(false);
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -92,7 +86,6 @@ const App: React.FC = () => {
 
   const fetchData = useCallback(async () => {
     if (authRole !== 'DRIVER' || !currentUser) return;
-
     if (!isOnline) {
       setTrips(await offlineStorage.getAll('trips'));
       setExpenses(await offlineStorage.getAll('expenses'));
@@ -101,11 +94,8 @@ const App: React.FC = () => {
       setJornadaLogs(await offlineStorage.getAll('jornada_logs'));
       return;
     }
-
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const userId = user?.id || currentUser.id;
-
+      const userId = currentUser.id;
       const [tripsRes, expensesRes, vehiclesRes, maintenanceRes, jornadaRes, notificationsRes] = await Promise.all([
         supabase.from('trips').select('*').eq('user_id', userId).order('date', { ascending: false }),
         supabase.from('expenses').select('*').eq('user_id', userId).order('date', { ascending: false }),
@@ -114,14 +104,12 @@ const App: React.FC = () => {
         supabase.from('jornada_logs').select('*').eq('user_id', userId).order('start_time', { ascending: false }),
         supabase.from('notifications').select('*').or(`target_user_email.is.null,target_user_email.eq.${currentUser.email}`).order('created_at', { ascending: false })
       ]);
-
       if (tripsRes.data) { setTrips(tripsRes.data); await offlineStorage.bulkSave('trips', tripsRes.data); }
       if (expensesRes.data) { setExpenses(expensesRes.data); await offlineStorage.bulkSave('expenses', expensesRes.data); }
       if (vehiclesRes.data) { setVehicles(vehiclesRes.data); await offlineStorage.bulkSave('vehicles', vehiclesRes.data); }
       if (maintenanceRes.data) { setMaintenance(maintenanceRes.data); await offlineStorage.bulkSave('maintenance', maintenanceRes.data); }
       if (jornadaRes.data) { setJornadaLogs(jornadaRes.data); await offlineStorage.bulkSave('jornada_logs', jornadaRes.data); }
       if (notificationsRes.data) setNotifications(notificationsRes.data);
-
     } catch (error) {
       console.error("Error fetching data:", error);
     }
@@ -139,17 +127,14 @@ const App: React.FC = () => {
         await fetchData();
         return;
       }
-
       const userId = currentUser.id;
       const payload = { ...data, user_id: userId };
       let response;
-
       if (action === 'insert') response = await supabase.from(table).insert([payload]).select().single();
       else if (action === 'update') {
         const { id, user_id, ...updateData } = payload;
         response = await supabase.from(table).update(updateData).eq('id', id).select().single();
       } else if (action === 'delete') response = await supabase.from(table).delete().eq('id', data.id);
-
       if (response?.error) throw response.error;
       await fetchData();
     } catch (error) {
@@ -161,23 +146,27 @@ const App: React.FC = () => {
   };
 
   const handleLogin = async () => {
-    if (!loginForm.email || !loginForm.password) return alert("Preencha e-mail e senha.");
+    const inputEmail = loginForm.email.toLowerCase().trim();
+    const inputPassword = loginForm.password.trim();
+    if (!inputEmail || !inputPassword) return alert("Preencha e-mail e senha.");
     setIsLoggingIn(true);
     try {
-      if (loginMode === 'DRIVER') {
-        const { data, error } = await supabase.from('drivers').select('*').eq('email', loginForm.email.toLowerCase().trim()).eq('password', loginForm.password).maybeSingle();
-        if (error || !data) throw new Error("Credenciais de motorista inválidas.");
-        setCurrentUser(data);
-        setAuthRole('DRIVER');
-      } else {
-        // Admin Login Master
-        if (loginForm.email === 'admin@aurilog.com' && loginForm.password === 'admin123') {
-          setAuthRole('ADMIN');
-          setCurrentUser({ email: 'admin@aurilog.com', name: 'Gestor Master' });
-        } else {
-          throw new Error("Credenciais de administrador inválidas.");
+      const table = loginMode === 'ADMIN' ? 'admins' : 'drivers';
+      const { data, error } = await supabase.from(table).select('*').eq('email', inputEmail).eq('password', inputPassword).maybeSingle();
+      
+      if (error) {
+        if (error.code === '42P01') {
+          throw new Error("Erro Crítico: A tabela '" + table + "' não existe no seu banco de dados. Por favor, execute o SQL de inicialização no painel do Supabase.");
         }
+        throw error;
       }
+      
+      if (!data) {
+        throw new Error(loginMode === 'ADMIN' ? "Gestor não encontrado. Verifique se o SQL de setup foi executado corretamente." : "Motorista não encontrado.");
+      }
+      
+      setCurrentUser(data);
+      setAuthRole(loginMode);
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -189,9 +178,7 @@ const App: React.FC = () => {
     setAuthRole(null);
     setCurrentUser(null);
     setLoginForm({ email: '', password: '' });
-    // Ao deslogar motorista, sempre volta para o modo Admin por segurança
     setLoginMode('ADMIN');
-    setIsDriverAppUnlocked(false);
   };
 
   const handleUnlockDriverApp = () => {
@@ -199,14 +186,12 @@ const App: React.FC = () => {
     setCurrentUser(null);
     setLoginForm({ email: '', password: '' });
     setLoginMode('DRIVER');
-    setIsDriverAppUnlocked(true);
   };
 
-  // TELA DE LOGIN (Portal Inicial)
+  // TELA DE LOGIN
   if (!authRole) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 relative overflow-hidden font-['Plus_Jakarta_Sans']">
-        {/* Efeitos de Fundo */}
         <div className="absolute inset-0 pointer-events-none opacity-20">
           <div className={`absolute top-0 left-0 w-full h-full transition-all duration-1000 ${loginMode === 'ADMIN' ? 'bg-primary-900/40' : 'bg-emerald-900/40'}`}></div>
           <div className="absolute top-[-20%] left-[-20%] w-[60%] h-[60%] bg-primary-600 rounded-full blur-[180px]"></div>
@@ -225,47 +210,29 @@ const App: React.FC = () => {
           </div>
 
           <div className="bg-white/5 backdrop-blur-3xl p-10 rounded-[4rem] border border-white/10 shadow-2xl space-y-8 animate-slide-up">
-            
-            {/* Status do Terminal */}
             <div className={`p-4 rounded-2xl border text-[10px] font-black uppercase tracking-widest text-center ${loginMode === 'ADMIN' ? 'bg-amber-500/10 border-amber-500/30 text-amber-500' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500'}`}>
-               {loginMode === 'ADMIN' ? 'Terminal Bloqueado: Exige Gestor' : 'Terminal Liberado: Portal Condutor'}
+               {loginMode === 'ADMIN' ? '🔒 Terminal Bloqueado: Exige Gestor (DB)' : '🔓 Terminal Liberado: Portal Condutor'}
             </div>
 
             <div className="space-y-4">
               <div className="relative group">
                 <User className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-primary-400 transition-colors" size={20} />
-                <input 
-                  type="email" 
-                  placeholder={loginMode === 'ADMIN' ? "E-mail Administrativo" : "E-mail do Motorista"}
-                  className="w-full bg-white/5 border border-white/10 p-6 pl-14 rounded-3xl text-white outline-none focus:ring-4 focus:ring-primary-500/30 transition-all font-bold placeholder:text-slate-600"
-                  value={loginForm.email}
-                  onChange={e => setLoginForm({...loginForm, email: e.target.value})}
-                />
+                <input type="email" placeholder={loginMode === 'ADMIN' ? "admin@aurilog.com" : "E-mail do Motorista"} className="w-full bg-white/5 border border-white/10 p-6 pl-14 rounded-3xl text-white outline-none focus:ring-4 focus:ring-primary-500/30 transition-all font-bold placeholder:text-slate-700" value={loginForm.email} onChange={e => setLoginForm({...loginForm, email: e.target.value})} />
               </div>
               <div className="relative group">
                 <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-primary-400 transition-colors" size={20} />
-                <input 
-                  type="password" 
-                  placeholder="Senha secreta" 
-                  className="w-full bg-white/5 border border-white/10 p-6 pl-14 rounded-3xl text-white outline-none focus:ring-4 focus:ring-primary-500/30 transition-all font-bold placeholder:text-slate-600"
-                  value={loginForm.password}
-                  onChange={e => setLoginForm({...loginForm, password: e.target.value})}
-                />
+                <input type="password" placeholder="Sua senha secreta" className="w-full bg-white/5 border border-white/10 p-6 pl-14 rounded-3xl text-white outline-none focus:ring-4 focus:ring-primary-500/30 transition-all font-bold placeholder:text-slate-700" value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} />
               </div>
             </div>
 
-            <button 
-              onClick={handleLogin} 
-              disabled={isLoggingIn}
-              className={`w-full py-6 rounded-3xl font-black uppercase text-xs shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3 ${loginMode === 'ADMIN' ? 'bg-primary-600 text-white shadow-primary-600/30' : 'bg-emerald-600 text-white shadow-emerald-600/30'}`}
-            >
+            <button onClick={handleLogin} disabled={isLoggingIn} className={`w-full py-6 rounded-3xl font-black uppercase text-xs shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3 ${loginMode === 'ADMIN' ? 'bg-primary-600 text-white shadow-primary-600/30' : 'bg-emerald-600 text-white shadow-emerald-600/30'}`}>
               {isLoggingIn ? <Loader2 className="animate-spin" /> : loginMode === 'ADMIN' ? <ShieldCheck size={20} /> : <Truck size={20} />}
               {loginMode === 'ADMIN' ? 'Autenticar Gestor' : 'Entrar no Painel Driver'}
             </button>
             
             {loginMode === 'DRIVER' && (
               <div className="text-center pt-2">
-                 <button onClick={() => { setLoginMode('ADMIN'); setIsDriverAppUnlocked(false); }} className="text-[10px] font-black text-slate-600 uppercase tracking-widest hover:text-white transition-colors flex items-center justify-center gap-2 mx-auto">
+                 <button onClick={() => setLoginMode('ADMIN')} className="text-[10px] font-black text-slate-600 uppercase tracking-widest hover:text-white transition-colors flex items-center justify-center gap-2 mx-auto">
                    <Lock size={12} /> Bloquear e voltar ao Admin
                  </button>
               </div>
@@ -273,40 +240,24 @@ const App: React.FC = () => {
           </div>
           
           <div className="text-center space-y-4 animate-fade-in">
-             <p className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">Tecnologia AuriLog Solutions v5.0</p>
+             <p className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">Tecnologia AuriLog Solutions v5.3</p>
           </div>
         </div>
       </div>
     );
   }
 
-  // TELA ADMIN (Portal Master)
   if (authRole === 'ADMIN') {
     return <AdminPanel onRefresh={() => {}} onLogout={handleLogout} onUnlockDriverApp={handleUnlockDriverApp} />;
   }
 
-  // TELA MOTORISTA (Visão Operacional)
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-['Plus_Jakarta_Sans']">
-      {/* Mobile Top Header */}
-      <div className="md:hidden bg-white border-b px-4 py-4 flex justify-between items-center sticky top-0 z-50">
-        <h1 className="text-xl font-black tracking-tighter text-primary-600">AURILOG</h1>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setShowNotifications(true)} className="relative p-2 text-slate-400">
-            <Bell size={24} />
-            {notifications.length > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-rose-500 rounded-full"></span>}
-          </button>
-          <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="p-2 text-slate-600">
-            {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
-          </button>
-        </div>
-      </div>
-
-      {/* Sidebar Navigation - Exclusiva Motorista */}
+      {/* Sidebar - Motorista */}
       <div className={`${isMenuOpen ? 'fixed inset-0 z-40 bg-white' : 'hidden'} md:flex md:w-80 md:flex-col md:border-r md:bg-white p-6 md:sticky md:top-0 md:h-screen transition-all shadow-sm`}>
         <div className="hidden md:flex flex-col mb-10">
           <h1 className="text-3xl font-black tracking-tighter text-primary-600">AURILOG</h1>
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Bem-vindo, {currentUser?.name?.split(' ')[0]}</p>
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Olá, {currentUser?.name?.split(' ')[0]}</p>
         </div>
 
         <div className="flex-1 flex flex-col gap-2 overflow-y-auto no-scrollbar">
@@ -345,12 +296,7 @@ const App: React.FC = () => {
       </main>
 
       {showNotifications && (
-        <NotificationCenter 
-          notifications={notifications as any} 
-          onClose={() => setShowNotifications(false)} 
-          onAction={(cat) => { setCurrentView(cat as AppView); setShowNotifications(false); }} 
-          onDismiss={(id) => setNotifications(prev => prev.filter(n => n.id !== id))} 
-        />
+        <NotificationCenter notifications={notifications as any} onClose={() => setShowNotifications(false)} onAction={(cat) => { setCurrentView(cat as AppView); setShowNotifications(false); }} onDismiss={(id) => setNotifications(prev => prev.filter(n => n.id !== id))} />
       )}
     </div>
   );
