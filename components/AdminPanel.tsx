@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Send, Bell, MapPin, Loader2, ShieldAlert, Trash2, CheckCircle2, Store, Fuel, Wrench, Hammer, User, Mail, Plus, ExternalLink, RefreshCcw, MapPinHouse, Utensils, Edit2, Tag, X, History, MessageSquareQuote, LogOut, RotateCcw, MapPinned, Radar, Navigation, Signal, ChevronRight, Search, LayoutDashboard, Truck, Wallet, CheckSquare, Eye } from 'lucide-react';
+import { Send, Bell, MapPin, Loader2, ShieldAlert, Trash2, CheckCircle2, Store, Fuel, Wrench, Hammer, User, Mail, Plus, ExternalLink, RefreshCcw, MapPinHouse, Utensils, Edit2, Tag, X, History, MessageSquareQuote, LogOut, RotateCcw, MapPinned, Radar, Navigation, Signal, ChevronRight, Search, LayoutDashboard, Truck, Wallet, CheckSquare, Eye, AlertTriangle, Info, ShieldCheck } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { RoadService, DbNotification, UserLocation, Trip, Expense, Vehicle, MaintenanceItem } from '../types';
 
@@ -39,7 +39,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
     title: '',
     message: '',
     type: 'INFO' as 'INFO' | 'URGENT' | 'WARNING',
-    category: 'GENERAL' as any,
+    category: 'GENERAL' as 'JORNADA' | 'MAINTENANCE' | 'FINANCE' | 'TRIP' | 'GENERAL',
     target_user_email: ''
   });
 
@@ -133,7 +133,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
     setLoading(true);
     try {
       const { error } = await supabase.from('notifications').insert([{
-        ...alertForm,
+        title: alertForm.title,
+        message: alertForm.message,
+        type: alertForm.type,
+        category: alertForm.category,
         target_user_email: alertForm.target_user_email.trim() || null
       }]);
       if (error) throw error;
@@ -148,7 +151,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
   };
 
   const handleResend = (n: DbNotification) => {
-    setAlertForm({ title: n.title, message: n.message, type: n.type as any, category: n.category as any, target_user_email: n.target_user_email || '' });
+    setAlertForm({ 
+      title: n.title, 
+      message: n.message, 
+      type: n.type as any, 
+      category: n.category as any, 
+      target_user_email: n.target_user_email || '' 
+    });
     window.scrollTo({ top: 0, behavior: 'smooth' });
     setActiveTab('ALERTS');
   };
@@ -226,7 +235,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
       </div>
 
       <div className="grid grid-cols-1 gap-6">
-        {/* FROTA / LOCATIONS com Busca */}
         {activeTab === 'LOCATIONS' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
              <div className="lg:col-span-4 space-y-4">
@@ -269,7 +277,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
           </div>
         )}
 
-        {/* EXPLORADOR DE DADOS (NOVO) */}
+        {/* EXPLORADOR DE DADOS */}
         {activeTab === 'EXPLORER' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fade-in">
              <div className="lg:col-span-4">
@@ -325,7 +333,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                                   <span className="text-[9px] font-black bg-white px-2 py-1 rounded-lg border">{v.current_km.toLocaleString()} KM</span>
                                </div>
                              ))}
-                             {explorerData.vehicles.length === 0 && <p className="text-[10px] text-center py-4 text-slate-400 font-bold uppercase">Nenhum veículo</p>}
                           </div>
                        </div>
                        <div className="bg-white p-8 rounded-[3rem] border shadow-sm">
@@ -337,7 +344,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                                   <span className="text-[10px] font-black text-rose-600 whitespace-nowrap">R$ {e.amount.toLocaleString()}</span>
                                </div>
                              ))}
-                             {explorerData.expenses.length === 0 && <p className="text-[10px] text-center py-4 text-slate-400 font-bold uppercase">Sem registros</p>}
                           </div>
                        </div>
                     </div>
@@ -352,46 +358,81 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
           </div>
         )}
 
-        {/* ALERTAS */}
+        {/* ALERTAS - FORMULÁRIO COMPLETO RESTAURADO */}
         {activeTab === 'ALERTS' && (
           <div className="space-y-6 md:space-y-10">
-            <div className="max-w-3xl mx-auto w-full bg-white p-6 md:p-10 rounded-3xl md:rounded-[3.5rem] border shadow-sm">
-               <h3 className="text-xl md:text-2xl font-black mb-6 flex items-center gap-3 uppercase tracking-tight"><Bell className="text-primary-600" size={24} /> Comunicados</h3>
-                <form onSubmit={handleSendAlert} className="space-y-4 md:space-y-6">
-                  <div className="space-y-1.5">
-                    <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Destinatário</label>
-                    <select className="w-full p-4 md:p-5 bg-slate-50 border border-slate-100 rounded-2xl md:rounded-3xl font-bold outline-none text-xs" value={alertForm.target_user_email} onChange={e => setAlertForm({...alertForm, target_user_email: e.target.value})}>
-                        <option value="">TODOS OS MOTORISTAS</option>
-                        {driverLocations.map(d => <option key={d.user_id} value={d.email}>{d.email}</option>)}
-                    </select>
+            <div className="max-w-4xl mx-auto w-full bg-white p-6 md:p-10 rounded-3xl md:rounded-[3.5rem] border shadow-sm">
+               <h3 className="text-xl md:text-2xl font-black mb-8 flex items-center gap-3 uppercase tracking-tight"><Bell className="text-primary-600" size={24} /> Disparar Mensagem</h3>
+                <form onSubmit={handleSendAlert} className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Destinatário</label>
+                      <select className="w-full p-4 md:p-5 bg-slate-50 border border-slate-100 rounded-2xl md:rounded-3xl font-bold outline-none text-xs" value={alertForm.target_user_email} onChange={e => setAlertForm({...alertForm, target_user_email: e.target.value})}>
+                          <option value="">TODOS OS MOTORISTAS</option>
+                          {driverLocations.map(d => <option key={d.user_id} value={d.email}>{d.email}</option>)}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Prioridade</label>
+                      <select className="w-full p-4 md:p-5 bg-slate-50 border border-slate-100 rounded-2xl md:rounded-3xl font-bold outline-none text-xs" value={alertForm.type} onChange={e => setAlertForm({...alertForm, type: e.target.value as any})}>
+                          <option value="INFO">Informação (Azul)</option>
+                          <option value="WARNING">Aviso (Amarelo)</option>
+                          <option value="URGENT">Urgente (Vermelho)</option>
+                      </select>
+                    </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Título</label>
-                    <input required placeholder="Aviso Importante..." className="w-full p-4 md:p-5 bg-slate-50 border border-slate-100 rounded-2xl md:rounded-3xl font-bold outline-none text-xs" value={alertForm.title} onChange={e => setAlertForm({...alertForm, title: e.target.value})} />
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Assunto / Categoria</label>
+                      <select className="w-full p-4 md:p-5 bg-slate-50 border border-slate-100 rounded-2xl md:rounded-3xl font-bold outline-none text-xs" value={alertForm.category} onChange={e => setAlertForm({...alertForm, category: e.target.value as any})}>
+                          <option value="GENERAL">Geral</option>
+                          <option value="JORNADA">Jornada de Trabalho</option>
+                          <option value="MAINTENANCE">Manutenção</option>
+                          <option value="FINANCE">Financeiro</option>
+                          <option value="TRIP">Viagem / Rota</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Título</label>
+                      <input required placeholder="Ex: Manutenção Programada" className="w-full p-4 md:p-5 bg-slate-50 border border-slate-100 rounded-2xl md:rounded-3xl font-bold outline-none text-xs" value={alertForm.title} onChange={e => setAlertForm({...alertForm, title: e.target.value})} />
+                    </div>
                   </div>
+
                   <div className="space-y-1.5">
-                    <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Mensagem</label>
-                    <textarea rows={3} required placeholder="Digite o conteúdo..." className="w-full p-4 md:p-5 bg-slate-50 border border-slate-100 rounded-2xl md:rounded-3xl font-bold outline-none resize-none text-xs" value={alertForm.message} onChange={e => setAlertForm({...alertForm, message: e.target.value})} />
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Conteúdo da Mensagem</label>
+                    <textarea rows={4} required placeholder="Digite os detalhes do comunicado aqui..." className="w-full p-4 md:p-5 bg-slate-50 border border-slate-100 rounded-2xl md:rounded-3xl font-bold outline-none resize-none text-xs" value={alertForm.message} onChange={e => setAlertForm({...alertForm, message: e.target.value})} />
                   </div>
-                  <button disabled={loading} type="submit" className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs shadow-xl flex items-center justify-center gap-3 transition-all active:scale-95">{loading ? <Loader2 className="animate-spin" /> : <Send size={20} />} Enviar</button>
+
+                  <button disabled={loading} type="submit" className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs shadow-xl flex items-center justify-center gap-3 transition-all active:scale-95">
+                    {loading ? <Loader2 className="animate-spin" /> : <Send size={20} />} Disparar Alerta Agora
+                  </button>
                 </form>
             </div>
+
             <div className="max-w-4xl mx-auto space-y-4">
-              <h3 className="text-lg font-black uppercase px-2 flex items-center gap-2"><History size={20} className="text-primary-600" /> Histórico</h3>
-              <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+              <h3 className="text-lg font-black uppercase px-2 flex items-center gap-2"><History size={20} className="text-primary-600" /> Histórico de Disparos</h3>
+              <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar border-t pt-4">
                 {sentNotifications.map(n => (
-                  <div key={n.id} className="bg-white p-4 md:p-6 rounded-2xl border shadow-sm flex items-start justify-between gap-4 group hover:border-primary-200">
+                  <div key={n.id} className={`bg-white p-5 rounded-3xl border-2 shadow-sm flex items-start justify-between gap-4 group transition-all ${n.type === 'URGENT' ? 'border-rose-100' : n.type === 'WARNING' ? 'border-amber-100' : 'border-slate-50'}`}>
                     <div className="flex gap-4 overflow-hidden">
-                       <div className="p-3 bg-slate-50 text-slate-400 rounded-xl shrink-0"><Bell size={18} /></div>
+                       <div className={`p-4 rounded-2xl shrink-0 ${n.type === 'URGENT' ? 'bg-rose-50 text-rose-500' : n.type === 'WARNING' ? 'bg-amber-50 text-amber-500' : 'bg-slate-50 text-slate-400'}`}>
+                         {n.type === 'URGENT' ? <ShieldAlert size={20}/> : n.type === 'WARNING' ? <AlertTriangle size={20}/> : <Info size={20}/>}
+                       </div>
                        <div className="overflow-hidden">
-                         <h4 className="font-black text-slate-900 uppercase text-xs truncate">{n.title}</h4>
-                         <p className="text-[10px] text-slate-500 font-medium line-clamp-2 mt-1">{n.message}</p>
-                         <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mt-2">{new Date(n.created_at).toLocaleDateString()} {n.target_user_email && `• Para: ${n.target_user_email}`}</p>
+                         <div className="flex items-center gap-2 mb-1">
+                            <h4 className="font-black text-slate-900 uppercase text-xs truncate">{n.title}</h4>
+                            <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 uppercase">{n.category}</span>
+                         </div>
+                         <p className="text-[10px] text-slate-500 font-medium line-clamp-2 leading-relaxed">{n.message}</p>
+                         <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mt-2">
+                           {new Date(n.created_at).toLocaleString()} {n.target_user_email && `• Para: ${n.target_user_email}`}
+                         </p>
                        </div>
                     </div>
                     <div className="flex flex-col gap-2">
-                      <button onClick={() => handleResend(n)} className="p-2 bg-slate-50 text-slate-400 hover:text-primary-600 rounded-lg"><RotateCcw size={14} /></button>
-                      <button onClick={() => handleDeleteNotification(n.id)} className="p-2 bg-slate-50 text-slate-400 hover:text-rose-500 rounded-lg"><Trash2 size={14} /></button>
+                      <button onClick={() => handleResend(n)} title="Reenviar" className="p-2 bg-slate-50 text-slate-400 hover:text-primary-600 rounded-lg"><RotateCcw size={14} /></button>
+                      <button onClick={() => handleDeleteNotification(n.id)} title="Excluir" className="p-2 bg-slate-50 text-slate-400 hover:text-rose-500 rounded-lg"><Trash2 size={14} /></button>
                     </div>
                   </div>
                 ))}
@@ -400,20 +441,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
           </div>
         )}
 
-        {/* CATEGORIAS (RESTAURADA) */}
+        {/* CATEGORIAS */}
         {activeTab === 'CATEGORIES' && (
           <div className="max-w-2xl mx-auto w-full space-y-6 md:space-y-8 animate-fade-in">
             <div className="bg-white p-6 md:p-10 rounded-3xl md:rounded-[3.5rem] border shadow-sm">
               <h3 className="text-xl md:text-2xl font-black mb-6 flex items-center gap-3 uppercase tracking-tight"><Tag className="text-primary-600" size={24} /> Gestão de Categorias</h3>
               <div className="flex flex-col sm:flex-row gap-3 mb-8">
-                <input placeholder="Nova Categoria..." className="flex-1 p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none text-xs" value={newCategory} onChange={e => setNewCategory(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddCategory()} />
+                <input placeholder="Ex: Mecânica Geral" className="flex-1 p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none text-xs" value={newCategory} onChange={e => setNewCategory(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddCategory()} />
                 <button onClick={handleAddCategory} className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px]">Adicionar</button>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {categories.map(cat => (
-                  <div key={cat} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 group">
+                  <div key={cat} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 group transition-all hover:bg-white hover:border-slate-200">
                     <span className="font-bold text-slate-700 text-xs">{cat}</span>
-                    <button onClick={() => { if(confirm(`Remover "${cat}"?`)) setCategories(categories.filter(c => c !== cat)) }} className="text-slate-300 hover:text-rose-500 p-1 opacity-0 group-hover:opacity-100 transition-all"><X size={16} /></button>
+                    <button onClick={() => { if(confirm(`Remover "${cat}"?`)) setCategories(categories.filter(c => c !== cat)) }} className="text-slate-300 hover:text-rose-500 p-2 transition-all">
+                      <Trash2 size={16} />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -421,7 +464,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
           </div>
         )}
 
-        {/* SERVIÇOS (IGUAL COM MELHORIA DE ESCALA) */}
+        {/* SERVIÇOS */}
         {activeTab === 'SERVICES' && (
           <div className="flex flex-col lg:grid lg:grid-cols-12 gap-8">
             <div className="lg:col-span-5 bg-white p-6 md:p-8 rounded-3xl border shadow-sm h-fit">
@@ -443,7 +486,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                   <label className="text-[9px] font-black uppercase text-slate-400">Link Maps</label>
                   <input required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl font-bold outline-none text-xs" value={serviceForm.location_url} onChange={e => setServiceForm({...serviceForm, location_url: e.target.value})} />
                 </div>
-                <button type="submit" className="w-full py-4 bg-emerald-600 text-white rounded-xl font-black uppercase text-[10px] mt-4 shadow-lg active:scale-95 transition-all">{editingServiceId ? 'Atualizar' : 'Cadastrar'}</button>
+                <button type="submit" className="w-full py-4 bg-emerald-600 text-white rounded-xl font-black uppercase text-[10px] mt-4 shadow-lg active:scale-95 transition-all">{editingServiceId ? 'Salvar Alterações' : 'Cadastrar Parceiro'}</button>
               </form>
             </div>
             <div className="lg:col-span-7 space-y-4">
