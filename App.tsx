@@ -9,7 +9,6 @@ import { ExpenseManager } from './components/ExpenseManager';
 import { VehicleManager } from './components/VehicleManager';
 import { MaintenanceManager } from './components/MaintenanceManager';
 import { FreightCalculator } from './components/FreightCalculator';
-import { AiAssistant } from './components/AiAssistant';
 import { JornadaManager } from './components/JornadaManager';
 import { StationLocator } from './components/StationLocator';
 import { AdminPanel } from './components/AdminPanel';
@@ -19,7 +18,6 @@ import {
   Map as MapIcon, 
   ReceiptText, 
   Calculator, 
-  Bot, 
   Truck, 
   Wrench, 
   Timer, 
@@ -249,13 +247,6 @@ const App: React.FC = () => {
           <SidebarItem view={AppView.JORNADA} icon={Timer} label="Minha Jornada" />
           <SidebarItem view={AppView.STATIONS} icon={MapPinned} label="Radar Estrada" />
           <SidebarItem view={AppView.ADMIN} icon={ShieldAlert} label="Administração" />
-          <button 
-            onClick={() => setCurrentView(AppView.TRIPS)} // Redirecting for demo
-            className="flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all text-slate-500 hover:bg-slate-100"
-          >
-            <Bot size={20} className="text-primary-500" />
-            <span>IA Auri Insights</span>
-          </button>
         </div>
 
         <div className="mt-6 pt-6 border-t space-y-4">
