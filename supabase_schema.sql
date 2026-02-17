@@ -13,23 +13,27 @@ CREATE TABLE IF NOT EXISTS drivers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   email TEXT UNIQUE NOT NULL,
-  password TEXT, -- Armazenado para referência do admin
+  password TEXT, -- Armazenado para referência do admin neste protótipo
   status TEXT DEFAULT 'Ativo',
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Políticas de RLS
+-- Habilitar RLS
 ALTER TABLE user_locations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE drivers ENABLE ROW LEVEL SECURITY;
 
+-- Políticas de Segurança (com verificação de existência)
+DROP POLICY IF EXISTS "Users can update their own location" ON user_locations;
 CREATE POLICY "Users can update their own location" 
 ON user_locations FOR ALL 
 USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Everyone can view locations" ON user_locations;
 CREATE POLICY "Everyone can view locations" 
 ON user_locations FOR SELECT 
 USING (true);
 
+DROP POLICY IF EXISTS "Admins can manage drivers" ON drivers;
 CREATE POLICY "Admins can manage drivers" 
 ON drivers FOR ALL 
 USING (true);

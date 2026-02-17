@@ -43,7 +43,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
     message: '',
     type: 'INFO' as 'INFO' | 'URGENT' | 'WARNING',
     category: 'GENERAL' as 'JORNADA' | 'MAINTENANCE' | 'FINANCE' | 'TRIP' | 'GENERAL',
-    target_user_email: ''
+    target_user_email: '' 
+  });
+
+  // Form de Serviço (Restaurado)
+  const [serviceForm, setServiceForm] = useState({
+    name: '',
+    type: 'Posto de Combustível',
+    description: '',
+    address: '',
+    phone: '',
+    location_url: ''
   });
 
   useEffect(() => {
@@ -53,7 +63,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
     fetchNotifications();
     fetchLocations();
 
-    // Inscrição em tempo real para localizações
     const locationChannel = supabase
       .channel('admin-tracking-updates')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'user_locations' }, (payload) => {
@@ -135,7 +144,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
       const { data: locData } = await supabase.from('user_locations').select('user_id').eq('email', userEmail).maybeSingle();
       
       if (!locData) {
-         alert("Este motorista ainda não realizou o primeiro acesso ao aplicativo para vincular dados financeiros.");
+         alert("Este motorista ainda não realizou o primeiro acesso ao aplicativo.");
          setExplorerLoading(false);
          return;
       }
@@ -190,7 +199,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
         message: alertForm.message,
         type: alertForm.type,
         category: alertForm.category,
-        target_user_email: alertForm.target_user_email || null // '' vira NULL para ir para todos
+        target_user_email: alertForm.target_user_email || null 
       }]);
       if (error) throw error;
       alert("Alerta enviado!");
@@ -203,25 +212,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
     }
   };
 
-  const handleResend = (n: DbNotification) => {
-    setAlertForm({ 
-      title: n.title, 
-      message: n.message, 
-      type: n.type as any, 
-      category: n.category as any, 
-      target_user_email: n.target_user_email || '' 
-    });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    setActiveTab('ALERTS');
-  };
-
   const handleDeleteNotification = async (id: string) => {
     if (!confirm("Excluir definitivamente?")) return;
     const { error } = await supabase.from('notifications').delete().eq('id', id);
     if (!error) setSentNotifications(sentNotifications.filter(n => n.id !== id));
   };
 
-  // Fix: Adding missing handleAddCategory function
   const handleAddCategory = () => {
     if (!newCategory.trim()) return;
     if (categories.includes(newCategory.trim())) {
@@ -232,10 +228,42 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
     setNewCategory('');
   };
 
+  // Funções de Gerenciamento de Serviços (Restauradas)
+  const handleSaveService = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!serviceForm.name || !serviceForm.address || !serviceForm.location_url) return alert("Preencha nome, endereço e link do mapa.");
+    setLoading(true);
+    try {
+      if (editingServiceId) {
+        const { error } = await supabase.from('road_services').update(serviceForm).eq('id', editingServiceId);
+        if (error) throw error;
+        alert("Serviço atualizado!");
+      } else {
+        const { error } = await supabase.from('road_services').insert([serviceForm]);
+        if (error) throw error;
+        alert("Novo parceiro cadastrado!");
+      }
+      setServiceForm({ name: '', type: categories[0] || 'Posto de Combustível', description: '', address: '', phone: '', location_url: '' });
+      setEditingServiceId(null);
+      fetchServices();
+    } catch (err: any) {
+      alert("Erro ao salvar serviço: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteService = async (id: string) => {
+    if (!confirm("Remover este parceiro da rede?")) return;
+    const { error } = await supabase.from('road_services').delete().eq('id', id);
+    if (!error) fetchServices();
+    else alert("Erro ao excluir: " + error.message);
+  };
+
   const isDriverOnline = (email: string) => {
     const loc = driverLocations.find(l => l.email === email);
     if (!loc) return false;
-    return (Date.now() - new Date(loc.updated_at).getTime()) < 600000; // 10 minutos
+    return (Date.now() - new Date(loc.updated_at).getTime()) < 600000; 
   };
 
   return (
@@ -258,7 +286,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
         </div>
       </div>
 
-      {/* Tabs de Navegação */}
+      {/* Tabs */}
       <div className="flex flex-wrap bg-slate-200 p-1 rounded-2xl md:rounded-[2rem] gap-1 w-full md:max-w-5xl mx-auto overflow-x-auto no-scrollbar">
         <button onClick={() => setActiveTab('LOCATIONS')} className={`flex-1 min-w-[100px] px-3 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-[8px] md:text-[10px] uppercase tracking-widest transition-all ${activeTab === 'LOCATIONS' ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-700'}`}>Monitorar</button>
         <button onClick={() => setActiveTab('DRIVERS')} className={`flex-1 min-w-[100px] px-3 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-[8px] md:text-[10px] uppercase tracking-widest transition-all ${activeTab === 'DRIVERS' ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-700'}`}>Motoristas</button>
@@ -268,10 +296,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
         <button onClick={() => setActiveTab('CATEGORIES')} className={`flex-1 min-w-[100px] px-3 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-[8px] md:text-[10px] uppercase tracking-widest transition-all ${activeTab === 'CATEGORIES' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Categorias</button>
       </div>
 
-      {/* CONTEÚDO DAS TABS */}
       <div className="grid grid-cols-1 gap-6">
         
-        {/* MONITORAMENTO (EQUIPE EM CAMPO) */}
+        {/* MONITORAMENTO */}
         {activeTab === 'LOCATIONS' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
              <div className="lg:col-span-4 bg-white p-6 rounded-[2.5rem] border shadow-sm flex flex-col h-[700px]">
@@ -362,7 +389,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
           </div>
         )}
 
-        {/* ALERTAS (CAMPO DESTINO CORRIGIDO) */}
+        {/* ALERTAS */}
         {activeTab === 'ALERTS' && (
           <div className="max-w-4xl mx-auto w-full space-y-10 animate-fade-in">
              <div className="bg-white p-8 md:p-12 rounded-[3.5rem] border shadow-sm">
@@ -370,11 +397,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                 <form onSubmit={handleSendAlert} className="space-y-6">
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-1.5">
-                         <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Destino (Obrigatório)</label>
-                         <select required className="w-full p-5 bg-slate-50 border border-slate-100 rounded-3xl font-bold outline-none text-xs appearance-none cursor-pointer focus:ring-2 focus:ring-primary-500" value={alertForm.target_user_email} onChange={e => setAlertForm({...alertForm, target_user_email: e.target.value})}>
-                            <option value="">TODOS OS MOTORISTAS (Público)</option>
-                            {drivers.map(d => <option key={d.id} value={d.email}>{d.name} ({d.email})</option>)}
-                         </select>
+                         <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Destino</label>
+                         <div className="relative">
+                            <select className="w-full p-5 bg-slate-50 border border-slate-100 rounded-3xl font-bold outline-none text-xs appearance-none cursor-pointer focus:ring-2 focus:ring-primary-500" value={alertForm.target_user_email} onChange={e => setAlertForm({...alertForm, target_user_email: e.target.value})}>
+                                <option value="">TODOS OS MOTORISTAS (Público)</option>
+                                {drivers.map(d => <option key={d.id} value={d.email}>{d.name} ({d.email})</option>)}
+                            </select>
+                            <ChevronRight className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 rotate-90 pointer-events-none" size={16} />
+                         </div>
                       </div>
                       <div className="space-y-1.5">
                          <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Prioridade</label>
@@ -387,11 +417,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                    </div>
                    <div className="space-y-1.5">
                       <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Título do Alerta</label>
-                      <input required placeholder="Ex: Aviso de Feriado" className="w-full p-5 bg-slate-50 border border-slate-100 rounded-3xl font-bold outline-none text-xs" value={alertForm.title} onChange={e => setAlertForm({...alertForm, title: e.target.value})} />
+                      <input required placeholder="Ex: Aviso de Manutenção Preventiva" className="w-full p-5 bg-slate-50 border border-slate-100 rounded-3xl font-bold outline-none text-xs" value={alertForm.title} onChange={e => setAlertForm({...alertForm, title: e.target.value})} />
                    </div>
                    <div className="space-y-1.5">
                       <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Mensagem Detalhada</label>
-                      <textarea rows={3} required placeholder="Escreva aqui..." className="w-full p-5 bg-slate-50 border border-slate-100 rounded-3xl font-bold outline-none text-xs resize-none" value={alertForm.message} onChange={e => setAlertForm({...alertForm, message: e.target.value})} />
+                      <textarea rows={3} required placeholder="Escreva aqui os detalhes do comunicado..." className="w-full p-5 bg-slate-50 border border-slate-100 rounded-3xl font-bold outline-none text-xs resize-none" value={alertForm.message} onChange={e => setAlertForm({...alertForm, message: e.target.value})} />
                    </div>
                    <button disabled={loading} type="submit" className="w-full py-5 bg-primary-600 text-white rounded-3xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all">Enviar Alerta Agora</button>
                 </form>
@@ -409,6 +439,70 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                            </div>
                         </div>
                         <button onClick={() => handleDeleteNotification(n.id)} className="p-2 text-slate-200 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16} /></button>
+                     </div>
+                   ))}
+                </div>
+             </div>
+          </div>
+        )}
+
+        {/* SERVIÇOS NA ESTRADA (Restaurado) */}
+        {activeTab === 'SERVICES' && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fade-in">
+             <div className="lg:col-span-5 bg-white p-8 md:p-12 rounded-[3.5rem] border shadow-sm h-fit">
+                <h3 className="text-2xl font-black flex items-center gap-3 uppercase tracking-tighter mb-8">
+                  {editingServiceId ? <Edit2 className="text-amber-500" /> : <Plus className="text-emerald-600" />} 
+                  {editingServiceId ? 'Editar Parceiro' : 'Novo Parceiro'}
+                </h3>
+                <form onSubmit={handleSaveService} className="space-y-5">
+                   <div className="space-y-1">
+                     <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Nome do Estabelecimento</label>
+                     <input required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-primary-500 transition-all" value={serviceForm.name} onChange={e => setServiceForm({...serviceForm, name: e.target.value})} />
+                   </div>
+                   <div className="space-y-1">
+                     <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Categoria de Serviço</label>
+                     <select className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" value={serviceForm.type} onChange={e => setServiceForm({...serviceForm, type: e.target.value})}>
+                       {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                     </select>
+                   </div>
+                   <div className="space-y-1">
+                     <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Endereço Completo</label>
+                     <input required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" value={serviceForm.address} onChange={e => setServiceForm({...serviceForm, address: e.target.value})} />
+                   </div>
+                   <div className="space-y-1">
+                     <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Link Google Maps</label>
+                     <input required placeholder="https://goo.gl/maps/..." className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" value={serviceForm.location_url} onChange={e => setServiceForm({...serviceForm, location_url: e.target.value})} />
+                   </div>
+                   <button disabled={loading} type="submit" className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all">
+                     {loading ? <Loader2 className="animate-spin" /> : editingServiceId ? 'Atualizar Dados' : 'Cadastrar Parceiro'}
+                   </button>
+                   {editingServiceId && (
+                     <button type="button" onClick={() => { setEditingServiceId(null); setServiceForm({name:'', type: categories[0]||'Posto', description:'', address:'', phone:'', location_url:''}); }} className="w-full py-3 text-slate-400 font-black uppercase text-[10px]">Cancelar Edição</button>
+                   )}
+                </form>
+             </div>
+             
+             <div className="lg:col-span-7 space-y-4">
+                <h3 className="text-lg font-black uppercase px-2 text-slate-400 flex items-center gap-2">
+                  <Store size={20} /> Parceiros Ativos na Rede
+                </h3>
+                <div className="grid grid-cols-1 gap-4 max-h-[700px] overflow-y-auto pr-2 custom-scrollbar">
+                   {services.map(s => (
+                     <div key={s.id} className="bg-white p-6 rounded-[2.5rem] border shadow-sm flex items-center justify-between group hover:border-emerald-200 transition-all">
+                        <div className="flex gap-4 items-center overflow-hidden">
+                           <div className="p-4 bg-slate-50 text-slate-400 rounded-2xl shrink-0 group-hover:bg-emerald-50 group-hover:text-emerald-600 transition-colors">
+                              {s.type.includes('Posto') ? <Fuel size={24} /> : s.type.includes('Restaurante') ? <Utensils size={24} /> : <Wrench size={24} />}
+                           </div>
+                           <div className="overflow-hidden">
+                              <h4 className="font-black text-slate-900 text-base uppercase truncate leading-tight">{s.name}</h4>
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{s.type}</p>
+                              <p className="text-[10px] text-slate-400 truncate max-w-xs">{s.address}</p>
+                           </div>
+                        </div>
+                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                           <button onClick={() => { setEditingServiceId(s.id); setServiceForm({name: s.name, type: s.type, description: s.description||'', address: s.address, phone: s.phone||'', location_url: s.location_url}); window.scrollTo({top:0, behavior:'smooth'}); }} className="p-3 bg-white shadow-sm border rounded-full text-amber-500 hover:bg-amber-50"><Edit2 size={16}/></button>
+                           <button onClick={() => handleDeleteService(s.id)} className="p-3 bg-white shadow-sm border rounded-full text-rose-500 hover:bg-rose-50"><Trash2 size={16}/></button>
+                        </div>
                      </div>
                    ))}
                 </div>
@@ -459,7 +553,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
           </div>
         )}
 
-        {/* SERVIÇOS E CATEGORIAS MANTIDOS IGUAIS (VISUALMENTE INTEGRADOS) */}
+        {/* CATEGORIAS */}
         {activeTab === 'CATEGORIES' && (
           <div className="max-w-2xl mx-auto w-full bg-white p-10 rounded-[3rem] border shadow-sm animate-fade-in">
              <h3 className="text-2xl font-black mb-8 uppercase tracking-tight">Gestão de Categorias</h3>
