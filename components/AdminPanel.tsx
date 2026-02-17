@@ -209,7 +209,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
     const onlineDrivers = driverLocations.filter(loc => isDriverOnline(loc.updated_at));
     if (onlineDrivers.length === 0) return alert("Nenhum motorista online no momento.");
     
-    // Abrir o mapa centrado no primeiro motorista online ou média
+    // Abrir o mapa com o link universal de busca do primeiro motorista online
     const first = onlineDrivers[0];
     window.open(`https://www.google.com/maps/search/?api=1&query=${first.latitude},${first.longitude}`, '_blank');
   };
@@ -247,7 +247,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
         {/* FROTA / MONITORAMENTO */}
         {activeTab === 'LOCATIONS' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-             {/* Equipe */}
+             {/* Equipe em Campo */}
              <div className="lg:col-span-4 bg-white p-6 rounded-[2.5rem] border shadow-sm flex flex-col h-[700px]">
                 <div className="flex justify-between items-center mb-6">
                   <h3 className="text-sm font-black uppercase tracking-tight text-slate-900">EQUIPE EM CAMPO</h3>
@@ -297,7 +297,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                 </div>
              </div>
 
-             {/* Monitoramento */}
+             {/* Monitoramento em Tempo Real */}
              <div className="lg:col-span-8 space-y-6">
                 <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100 flex flex-col md:flex-row items-center justify-between gap-6">
                    <div>
@@ -314,8 +314,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                 <div className="bg-white h-[530px] rounded-[4rem] border shadow-sm overflow-hidden relative">
                    {selectedDriver ? (
                      <iframe 
-                       key={selectedDriver.updated_at}
-                       title="Driver Map" 
+                       key={`${selectedDriver.user_id}-${selectedDriver.updated_at}`}
+                       title="Driver Location Map" 
                        className="w-full h-full border-0" 
                        src={`https://www.google.com/maps?q=${selectedDriver.latitude},${selectedDriver.longitude}&z=15&output=embed`} 
                      />
@@ -323,6 +323,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                      <div className="h-full flex flex-col items-center justify-center bg-slate-50 p-12 text-center">
                         <MapPin size={48} className="text-slate-200 mb-4" />
                         <h4 className="text-xl font-black text-slate-400 uppercase">Selecione um motorista para localizar</h4>
+                        <p className="text-slate-300 font-bold text-sm mt-2 max-w-xs">Clique em um dos nomes à esquerda para focar no GPS dele.</p>
                      </div>
                    )}
                 </div>
@@ -338,7 +339,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                 <form onSubmit={handleSendAlert} className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Destino (E-mail Privado ou Todos)</label>
+                      <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Destino (Vazio = TODOS)</label>
                       <div className="relative">
                         <select className="w-full p-4 md:p-5 bg-slate-50 border border-slate-100 rounded-2xl md:rounded-3xl font-bold outline-none text-xs appearance-none" value={alertForm.target_user_email} onChange={e => setAlertForm({...alertForm, target_user_email: e.target.value})}>
                             <option value="">TODOS OS MOTORISTAS (Público)</option>
@@ -385,7 +386,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                 </form>
             </div>
 
-            {/* Histórico como na imagem */}
             <div className="max-w-4xl mx-auto space-y-4">
               <h3 className="text-lg font-black uppercase px-2 flex items-center gap-2"><History size={20} className="text-primary-600" /> Histórico de Disparos</h3>
               <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar border-t pt-4">
@@ -404,16 +404,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                          <p className="text-[11px] text-slate-500 font-medium leading-relaxed mb-3">{n.message}</p>
                          <div className="flex items-center gap-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">
                            <span>{new Date(n.created_at).toLocaleString()}</span>
+                           <span className="text-slate-200">•</span>
                            {n.target_user_email ? (
-                             <>
-                               <span className="text-slate-200">•</span>
-                               <span className="text-primary-600">PARA: {n.target_user_email.toUpperCase()}</span>
-                             </>
+                             <span className="text-primary-600 font-black">PARA: {n.target_user_email.toUpperCase()}</span>
                            ) : (
-                             <>
-                               <span className="text-slate-200">•</span>
-                               <span className="text-slate-400">PARA: TODOS OS MOTORISTAS</span>
-                             </>
+                             <span className="text-slate-400 font-black">PARA: TODOS OS MOTORISTAS</span>
                            )}
                          </div>
                        </div>
@@ -428,8 +423,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
             </div>
           </div>
         )}
-        
-        {/* Outras tabs */}
+
+        {/* EXPLORER (Omitido por brevidade, permanece igual) */}
         {activeTab === 'EXPLORER' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fade-in">
              <div className="lg:col-span-4">
@@ -461,8 +456,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
              </div>
           </div>
         )}
-
-        {/* ... Categorias e Serviços permanecem os mesmos conforme código anterior ... */}
       </div>
     </div>
   );

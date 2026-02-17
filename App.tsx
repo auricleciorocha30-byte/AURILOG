@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { LayoutDashboard, Truck, Wallet, Calculator, Menu, X, LogOut, Bell, Settings, CheckSquare, Timer, Fuel, Loader2, Mail, Key, UserPlus, LogIn, AlertCircle, Share2, AlertTriangle, KeyRound, Wifi, WifiOff, CloudUpload, CheckCircle2, Coffee, Play, RefreshCcw, Undo2, Send, Clock, ShieldAlert, MapPinHouse, Lock, ShieldCheck, Smartphone, Download, MapPin } from 'lucide-react';
+import { LayoutDashboard, Truck, Wallet, Calculator, Menu, X, LogOut, Bell, Settings, CheckSquare, Timer, Fuel, Loader2, Mail, Key, UserPlus, LogIn, AlertCircle, Share2, AlertTriangle, KeyRound, Wifi, WifiOff, CloudUpload, CheckCircle2, Coffee, Play, RefreshCcw, Undo2, Send, Clock, ShieldAlert, MapPinHouse, Lock, ShieldCheck, Smartphone, Download, MapPin, Navigation } from 'lucide-react';
 import { Dashboard } from './components/Dashboard';
 import { TripManager } from './components/TripManager';
 import { ExpenseManager } from './components/ExpenseManager';
@@ -20,7 +20,6 @@ const App: React.FC = () => {
 
   const [session, setSession] = useState<any>(null);
   
-  // Inicializa o estado de admin checando o localStorage para persistência no refresh
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
     return localStorage.getItem('aurilog_admin_auth') === 'true';
   });
@@ -31,6 +30,9 @@ const App: React.FC = () => {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [syncing, setSyncing] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  
+  // Status do GPS para feedback ao usuário
+  const [gpsStatus, setGpsStatus] = useState<'IDLE' | 'TRACKING' | 'DENIED' | 'ERROR'>('IDLE');
   
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -63,11 +65,12 @@ const App: React.FC = () => {
     localStorage.setItem('aurilog_dismissed_notifications', JSON.stringify(dismissedNotificationIds));
   }, [dismissedNotificationIds]);
 
-  // Serviço de Rastreamento de Localização Otimizado
+  // Serviço de Rastreamento de Localização com tratamento de permissão
   useEffect(() => {
     if (!session?.user || !isUserMode || !navigator.geolocation) return;
 
     const startTracking = () => {
+      setGpsStatus('TRACKING');
       watchId.current = navigator.geolocation.watchPosition(
         async (pos) => {
           try {
@@ -79,6 +82,7 @@ const App: React.FC = () => {
               updated_at: new Date().toISOString()
             });
             if (upsertError) console.error("Erro ao enviar localização:", upsertError);
+            setGpsStatus('TRACKING');
           } catch (e) {
             console.error("Localização track error:", e);
           }
@@ -86,7 +90,9 @@ const App: React.FC = () => {
         (err) => {
           console.warn("Geolocation watch error:", err.message);
           if (err.code === 1) { // PERMISSION_DENIED
-            console.error("Permissão de localização negada pelo usuário.");
+            setGpsStatus('DENIED');
+          } else {
+            setGpsStatus('ERROR');
           }
         },
         { 
@@ -254,7 +260,6 @@ const App: React.FC = () => {
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const todayStr = today.toISOString().split('T')[0];
     
-    // 1. Notificações do Painel Administrativo
     dbNotifications.forEach(n => {
       if (!n.target_user_email || (session?.user?.email === n.target_user_email)) {
         list.push({ 
@@ -266,7 +271,6 @@ const App: React.FC = () => {
       }
     });
 
-    // 2. Alertas de Manutenção de Veículos
     maintenance.forEach(m => {
       const vehicle = vehicles.find(v => v.id === m.vehicle_id);
       if (!vehicle) return;
@@ -288,7 +292,6 @@ const App: React.FC = () => {
       }
     });
 
-    // 3. Alertas de Finanças (Persiste no sininho se estiver atrasado)
     expenses.forEach(e => {
       if (!e.is_paid && e.due_date) {
         const dueDate = new Date(e.due_date + 'T12:00:00');
@@ -318,7 +321,6 @@ const App: React.FC = () => {
       }
     });
 
-    // 4. Alertas de Viagens (Viagens agendadas para hoje ou atrasadas)
     trips.forEach(t => {
       if (t.status === TripStatus.SCHEDULED) {
         const isOverdue = t.date < todayStr;
@@ -348,7 +350,6 @@ const App: React.FC = () => {
       }
     });
 
-    // Filtra as notificações descartadas, EXCETO aquelas que são marcadas como persistentes
     return list.filter(n => {
       if (n.persistent) return true; 
       return !dismissedNotificationIds.includes(n.id);
@@ -412,7 +413,6 @@ const App: React.FC = () => {
         if (data.session) {
           if (!isUserMode) {
             setIsAdminAuthenticated(true);
-            // Salva no localStorage para persistir no refresh
             localStorage.setItem('aurilog_admin_auth', 'true');
           }
           else setSession(data.session);
@@ -425,7 +425,6 @@ const App: React.FC = () => {
   const handleAdminLogout = async () => {
     await supabase.auth.signOut();
     setIsAdminAuthenticated(false);
-    // Remove do localStorage ao sair
     localStorage.removeItem('aurilog_admin_auth');
     window.location.reload();
   };
@@ -527,7 +526,17 @@ const App: React.FC = () => {
       <main className="flex-1 flex flex-col overflow-hidden relative z-10">
         <header className="h-16 bg-white border-b flex items-center justify-between px-6 shrink-0 z-20">
           <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden p-2 text-slate-600 hover:bg-slate-50 rounded-lg"><Menu size={24} /></button>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-4">
+            {/* Indicador de GPS */}
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[9px] font-black uppercase transition-all ${
+              gpsStatus === 'TRACKING' ? 'bg-emerald-50 text-emerald-600' :
+              gpsStatus === 'DENIED' ? 'bg-rose-50 text-rose-600' :
+              'bg-slate-50 text-slate-400'
+            }`}>
+              <Navigation size={12} className={gpsStatus === 'TRACKING' ? 'animate-pulse' : ''} />
+              {gpsStatus === 'TRACKING' ? 'GPS ATIVO' : gpsStatus === 'DENIED' ? 'GPS NEGADO' : 'GPS OFF'}
+            </div>
+            
             <button onClick={() => setIsNotificationOpen(true)} className="relative p-3 text-slate-500 hover:bg-slate-50 rounded-full transition-all active:scale-90">
               <Bell size={24} className={activeNotifications.some(n => n.type === 'URGENT') ? 'text-rose-500 animate-pulse' : ''} />
               {activeNotifications.length > 0 && <span className="absolute top-2 right-2 bg-rose-500 text-white text-[8px] font-black w-5 h-5 rounded-full flex items-center justify-center border-2 border-white">{activeNotifications.length}</span>}
