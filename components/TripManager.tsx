@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Trip, TripStatus, Vehicle, TripStop, Expense } from '../types';
-import { Plus, MapPin, Calendar, Truck, UserCheck, Navigation, X, Trash2, Map as MapIcon, ChevronRight, Percent, Loader2, Edit2, DollarSign, MessageSquare, Sparkles, Wand2, PlusCircle, ExternalLink, CheckSquare, Gauge, Utensils, Construction, MapPinPlus, ShieldCheck, ChevronDown, AlignLeft, CheckCircle2, Package, NotebookPen, GaugeCircle, MapPinned, ReceiptText } from 'lucide-react';
+import { Plus, MapPin, Calendar, Truck, UserCheck, Navigation, X, Trash2, Map as MapIcon, ChevronRight, Percent, Loader2, Edit2, DollarSign, MessageSquare, Sparkles, Wand2, PlusCircle, ExternalLink, CheckSquare, Gauge, Utensils, Construction, MapPinPlus, ShieldCheck, ChevronDown, AlignLeft, CheckCircle2, Package, NotebookPen, GaugeCircle, MapPinned, ReceiptText, Wifi, WifiOff, CloudUpload, Clock } from 'lucide-react';
 import { calculateANTT } from '../services/anttService';
 
 interface TripManagerProps {
@@ -13,6 +13,7 @@ interface TripManagerProps {
   onUpdateStatus: (id: string, status: TripStatus, newVehicleKm?: number) => Promise<void>;
   onDeleteTrip: (id: string) => Promise<void>;
   isSaving?: boolean;
+  isOnline?: boolean; // Propriedade para detectar estado da rede
 }
 
 const BRAZILIAN_STATES = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
@@ -28,7 +29,7 @@ const getTodayLocal = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 };
 
-export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expenses, onAddTrip, onUpdateTrip, onUpdateStatus, onDeleteTrip, isSaving }) => {
+export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expenses, onAddTrip, onUpdateTrip, onUpdateStatus, onDeleteTrip, isSaving, isOnline = true }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isKmModalOpen, setIsKmModalOpen] = useState(false);
   const [editingTripId, setEditingTripId] = useState<string | null>(null);
@@ -168,7 +169,7 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
   };
 
   const handleEdit = (trip: Trip) => {
-    setEditingTripId(trip.id);
+    setEditingId(trip.id);
     const originParts = (trip.origin || "").split(' - ');
     const destParts = (trip.destination || "").split(' - ');
     setOrigin({ city: originParts[0] || '', state: originParts[1] || 'SP' });
@@ -186,6 +187,10 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
       notes: trip.notes || ''
     });
     setIsModalOpen(true);
+  };
+
+  const setEditingId = (id: string | null) => {
+    setEditingTripId(id);
   };
 
   const handleSave = async () => {
@@ -225,15 +230,31 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
 
   return (
     <div className="space-y-6 pb-20 max-w-7xl mx-auto">
-      <div className="flex justify-between items-center px-4">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 px-4">
         <div>
           <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">Minhas Viagens</h2>
-          <p className="text-slate-400 font-bold text-xs uppercase tracking-widest mt-1">Status e Roteirização</p>
+          <div className="flex items-center gap-2 mt-1">
+             <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Status e Roteirização</p>
+             <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-black uppercase ${isOnline ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+                {isOnline ? <Wifi size={10} /> : <WifiOff size={10} />}
+                {isOnline ? 'Sincronizado' : 'Modo Offline (Salva Local)'}
+             </div>
+          </div>
         </div>
-        <button onClick={() => { resetForm(); setIsModalOpen(true); }} className="bg-primary-600 text-white px-8 py-5 rounded-[2rem] flex items-center gap-2 font-black uppercase text-xs shadow-xl active:scale-95 transition-all">
+        <button onClick={() => { resetForm(); setIsModalOpen(true); }} className="w-full md:w-auto bg-primary-600 text-white px-8 py-5 rounded-[2rem] flex items-center justify-center gap-2 font-black uppercase text-xs shadow-xl active:scale-95 transition-all">
           <Plus size={20} /> Nova Viagem
         </button>
       </div>
+
+      {!isOnline && (
+        <div className="mx-4 bg-amber-50 border border-amber-100 p-4 rounded-3xl flex items-center gap-4 animate-fade-in shadow-sm">
+          <div className="p-3 bg-amber-500 text-white rounded-2xl shrink-0"><WifiOff size={20} /></div>
+          <div>
+            <p className="text-xs font-black text-amber-800 uppercase leading-none mb-1">Sem conexão detectada</p>
+            <p className="text-[10px] text-amber-600 font-bold leading-tight uppercase">Suas viagens serão salvas no celular e sincronizadas automaticamente quando o sinal voltar.</p>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 px-4">
         {sortedTrips.map(trip => {
@@ -241,21 +262,32 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
           const isAtrasada = trip.status === TripStatus.SCHEDULED && trip.date < getTodayLocal();
           const isHoje = trip.status === TripStatus.SCHEDULED && trip.date === getTodayLocal();
           
+          // Verifica se a viagem está aguardando sincronização no IndexedDB
+          const isPending = (trip as any).sync_status === 'pending';
+
           const tripExpensesTotal = expenses
             .filter(e => e.trip_id === trip.id)
             .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
           return (
             <div key={trip.id} className={`bg-white p-6 md:p-8 rounded-[3rem] border-2 shadow-sm relative group animate-fade-in transition-all ${isAtrasada ? 'border-rose-200 ring-4 ring-rose-50' : isHoje ? 'border-primary-200 ring-4 ring-primary-50' : 'border-slate-50'}`}>
-              {(isAtrasada || isHoje) && (
-                <div className={`absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full text-[10px] font-black uppercase text-white z-20 ${isAtrasada ? 'bg-rose-600 animate-pulse' : 'bg-primary-600'}`}>
-                  {isAtrasada ? 'Saída Atrasada' : 'Saída Hoje'}
+              {(isAtrasada || isHoje || isPending) && (
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 flex gap-1 z-20">
+                  {isPending && (
+                    <div className="bg-amber-600 px-3 py-1 rounded-full text-[9px] font-black uppercase text-white flex items-center gap-1 shadow-md">
+                      <Clock size={10} className="animate-spin" /> Local
+                    </div>
+                  )}
+                  {(isAtrasada || isHoje) && (
+                    <div className={`px-4 py-1 rounded-full text-[9px] font-black uppercase text-white shadow-md ${isAtrasada ? 'bg-rose-600 animate-pulse' : 'bg-primary-600'}`}>
+                      {isAtrasada ? 'Saída Atrasada' : 'Saída Hoje'}
+                    </div>
+                  )}
                 </div>
               )}
 
               <div className="flex flex-col gap-6">
                  <div className="flex-1">
-                    {/* Cabeçalho Ajustado para evitar sobreposição no Mobile */}
                     <div className="flex flex-col items-start gap-2 mb-4 pr-20">
                       <div className="shrink-0 flex items-center gap-2">
                         <select 
@@ -323,13 +355,18 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
                  </div>
               </div>
 
-              <div className="mt-6 flex gap-2">
-                <button onClick={() => window.open(getMapsUrl(trip.origin, trip.destination, trip.stops), '_blank')} className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase flex items-center justify-center gap-2 hover:bg-black transition-all">
-                  <MapIcon size={14}/> Rota GPS
+              <div className="mt-6 flex flex-col gap-2">
+                <button 
+                   onClick={() => {
+                     if (!isOnline) return alert("Esta função requer internet para carregar o mapa. Tente usar o Google Maps Offline do seu celular.");
+                     window.open(getMapsUrl(trip.origin, trip.destination, trip.stops), '_blank');
+                   }} 
+                   className={`w-full py-4 rounded-2xl font-black text-[10px] uppercase flex items-center justify-center gap-2 transition-all ${isOnline ? 'bg-slate-900 text-white hover:bg-black' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+                >
+                  <MapIcon size={14}/> Rota GPS {!isOnline && '(Requer Net)'}
                 </button>
               </div>
 
-              {/* Botões de ação posicionados no topo, mas agora sem conflitar com o texto pois o cabeçalho tem padding-right */}
               <div className="absolute top-6 right-6 flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                 <button onClick={() => handleEdit(trip)} className="p-3 bg-white shadow-md rounded-full text-slate-400 hover:text-primary-600 transition-colors"><Edit2 size={16}/></button>
                 <button onClick={() => { if(confirm('Excluir?')) onDeleteTrip(trip.id) }} className="p-3 bg-white shadow-md rounded-full text-slate-400 hover:text-rose-500 transition-colors"><Trash2 size={16}/></button>
@@ -382,6 +419,12 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
             </div>
 
             <div className="p-5 md:p-10 space-y-8">
+              {!isOnline && (
+                 <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 text-[10px] font-black text-amber-700 uppercase tracking-widest flex items-center gap-3">
+                    <WifiOff size={16} /> Você está em modo offline. O salvamento será local.
+                 </div>
+              )}
+
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase text-slate-400 ml-1 flex items-center gap-2">
                   <NotebookPen size={14}/> OBS / Descrição da Carga
@@ -442,33 +485,6 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
                     </button>
                   </div>
                 </div>
-
-                <div className="mt-6 pt-6 border-t border-slate-200">
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1 flex items-center gap-2 mb-4">
-                    <MapPinned size={14}/> Visualizar Trajeto no Mapa
-                  </label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button 
-                      onClick={() => {
-                        const url = getMapsUrl(`${origin.city} - ${origin.state}`, `${destination.city} - ${destination.state}`, stops);
-                        if (!origin.city || !destination.city) return alert("Informe origem e destino.");
-                        window.open(url, '_blank');
-                      }}
-                      className="flex items-center justify-center gap-2 py-4 bg-white border-2 border-slate-100 rounded-2xl font-black text-[10px] uppercase text-slate-600 hover:border-primary-500 hover:text-primary-600 transition-all shadow-sm"
-                    >
-                      <MapIcon size={14}/> Google Maps
-                    </button>
-                    <button 
-                      onClick={() => {
-                        if (!destination.city) return alert("Informe o destino.");
-                        window.open(getWazeUrl(destination.city, destination.state), '_blank');
-                      }}
-                      className="flex items-center justify-center gap-2 py-4 bg-white border-2 border-slate-100 rounded-2xl font-black text-[10px] uppercase text-slate-600 hover:border-primary-500 hover:text-primary-600 transition-all shadow-sm"
-                    >
-                      <Navigation size={14}/> Waze
-                    </button>
-                  </div>
-                </div>
               </div>
 
               <div className="space-y-2">
@@ -518,7 +534,7 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
                 </div>
               </div>
 
-              <button disabled={isSaving} onClick={handleSave} className="w-full py-8 bg-primary-600 text-white rounded-[2.5rem] font-black text-2xl shadow-2xl flex items-center justify-center gap-4 active:scale-95 transition-all">
+              <button disabled={isSaving} onClick={handleSave} className="w-full py-8 bg-primary-600 text-white rounded-[2.5rem] font-black text-2xl shadow-2xl flex items-center justify-center gap-4 active:scale-95 transition-all mb-8">
                 {isSaving ? <Loader2 className="animate-spin" /> : <ShieldCheck size={32}/>}
                 {isSaving ? 'Salvando...' : 'Confirmar Viagem'}
               </button>
