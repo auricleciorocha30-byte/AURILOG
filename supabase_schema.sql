@@ -9,13 +9,12 @@ CREATE TABLE IF NOT EXISTS user_locations (
 );
 
 -- Tabela de Motoristas Cadastrados pelo Admin
--- Nota: A senha é armazenada aqui apenas para fins de visualização/registro do admin neste protótipo.
 CREATE TABLE IF NOT EXISTS drivers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   email TEXT UNIQUE NOT NULL,
-  password TEXT, 
-  status TEXT DEFAULT 'Disponível',
+  password TEXT, -- Armazenado para referência do admin
+  status TEXT DEFAULT 'Ativo',
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -35,6 +34,6 @@ CREATE POLICY "Admins can manage drivers"
 ON drivers FOR ALL 
 USING (true);
 
--- Índices
+-- Índices para busca rápida
 CREATE INDEX IF NOT EXISTS idx_user_locations_updated ON user_locations(updated_at);
 CREATE INDEX IF NOT EXISTS idx_drivers_email ON drivers(email);

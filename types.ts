@@ -1,4 +1,5 @@
 
+
 export enum AppView {
   DASHBOARD = 'DASHBOARD',
   TRIPS = 'TRIPS',
@@ -24,6 +25,7 @@ export interface Driver {
   email: string;
   status: string;
   created_at: string;
+  password?: string;
 }
 
 export interface Vehicle {
