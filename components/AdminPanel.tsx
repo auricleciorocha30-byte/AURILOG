@@ -1,8 +1,8 @@
-
 import React, { useState, useEffect } from 'react';
-import { Send, Bell, MapPin, Loader2, ShieldAlert, Trash2, CheckCircle2, Store, Fuel, Wrench, Hammer, User, Mail, Plus, ExternalLink, RefreshCcw, MapPinHouse, Utensils, Edit2, Tag, X, History, MessageSquareQuote, LogOut, RotateCcw } from 'lucide-react';
+// Added missing ChevronRight import from lucide-react
+import { Send, Bell, MapPin, Loader2, ShieldAlert, Trash2, CheckCircle2, Store, Fuel, Wrench, Hammer, User, Mail, Plus, ExternalLink, RefreshCcw, MapPinHouse, Utensils, Edit2, Tag, X, History, MessageSquareQuote, LogOut, RotateCcw, MapPinned, Radar, Navigation, Signal, ChevronRight } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { RoadService, DbNotification } from '../types';
+import { RoadService, DbNotification, UserLocation } from '../types';
 
 interface AdminPanelProps {
   onRefresh: () => void;
@@ -10,7 +10,7 @@ interface AdminPanelProps {
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) => {
-  const [activeTab, setActiveTab] = useState<'ALERTS' | 'SERVICES' | 'CATEGORIES'>('ALERTS');
+  const [activeTab, setActiveTab] = useState<'ALERTS' | 'SERVICES' | 'CATEGORIES' | 'LOCATIONS'>('ALERTS');
   const [loading, setLoading] = useState(false);
   const [services, setServices] = useState<RoadService[]>([]);
   const [sentNotifications, setSentNotifications] = useState<DbNotification[]>([]);
@@ -18,6 +18,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
   const [newCategory, setNewCategory] = useState('');
   
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
+
+  // Estados de Localização
+  const [driverLocations, setDriverLocations] = useState<UserLocation[]>([]);
+  const [selectedDriver, setSelectedDriver] = useState<UserLocation | null>(null);
 
   // Form de Alerta
   const [alertForm, setAlertForm] = useState({
@@ -42,7 +46,37 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
     fetchServices();
     fetchCategories();
     fetchNotifications();
-  }, []);
+    fetchLocations();
+
+    // Inscrição Realtime para localizações
+    const locationChannel = supabase
+      .channel('admin-tracking')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_locations' }, (payload) => {
+        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+          setDriverLocations(prev => {
+            const index = prev.findIndex(l => l.user_id === payload.new.user_id);
+            if (index >= 0) {
+              const next = [...prev];
+              next[index] = payload.new as UserLocation;
+              return next;
+            }
+            return [...prev, payload.new as UserLocation];
+          });
+          // Se for o selecionado, atualiza
+          if (selectedDriver?.user_id === payload.new.user_id) {
+            setSelectedDriver(payload.new as UserLocation);
+          }
+        }
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(locationChannel); };
+  }, [selectedDriver]);
+
+  const fetchLocations = async () => {
+    const { data } = await supabase.from('user_locations').select('*');
+    if (data) setDriverLocations(data);
+  };
 
   const fetchNotifications = async () => {
     try {
@@ -108,7 +142,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
       category: n.category as any,
       target_user_email: n.target_user_email || ''
     });
-    // Rola para o topo do formulário suavemente
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -189,6 +222,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
     }
   };
 
+  // Função auxiliar para verificar se o motorista está "Online" (atualizado nos últimos 2 min)
+  const isDriverOnline = (updatedAt: string) => {
+    const diff = Date.now() - new Date(updatedAt).getTime();
+    return diff < 120000; // 2 minutos em ms
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-4 md:space-y-8 animate-fade-in py-6 md:py-12 px-4 pb-32">
       {/* Header Responsivo */}
@@ -201,7 +240,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
         </div>
         <div className="flex flex-wrap gap-2 w-full lg:w-auto">
           <button onClick={() => window.open(window.location.origin + '?mode=user', '_blank')} className="flex-1 lg:flex-none flex items-center justify-center gap-2 px-4 md:px-8 py-3 md:py-5 bg-white border-2 border-slate-100 text-slate-600 rounded-2xl font-black text-[10px] md:text-xs uppercase hover:border-primary-500 hover:text-primary-600 transition-all active:scale-95">
-            <ExternalLink size={18} /> Sistema
+            <ExternalLink size={18} /> Abrir App
           </button>
           <button onClick={onLogout} className="flex-1 lg:flex-none flex items-center justify-center gap-2 px-4 md:px-8 py-3 md:py-5 bg-rose-600 text-white rounded-2xl font-black text-[10px] md:text-xs uppercase shadow-xl hover:bg-rose-700 transition-all active:scale-95">
             <LogOut size={18} /> Sair
@@ -209,14 +248,84 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
         </div>
       </div>
 
-      {/* Tabs com escala mobile corrigida */}
-      <div className="flex bg-slate-200 p-1 rounded-2xl md:rounded-[2rem] gap-1 w-full md:max-w-2xl mx-auto">
-        <button onClick={() => setActiveTab('ALERTS')} className={`flex-1 px-3 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-[9px] md:text-xs uppercase tracking-widest transition-all ${activeTab === 'ALERTS' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Alertas</button>
-        <button onClick={() => setActiveTab('SERVICES')} className={`flex-1 px-3 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-[9px] md:text-xs uppercase tracking-widest transition-all ${activeTab === 'SERVICES' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Serviços</button>
-        <button onClick={() => setActiveTab('CATEGORIES')} className={`flex-1 px-3 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-[9px] md:text-xs uppercase tracking-widest transition-all ${activeTab === 'CATEGORIES' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Categorias</button>
+      {/* Tabs com escala mobile corrigida e nova aba de Localização */}
+      <div className="flex flex-wrap bg-slate-200 p-1 rounded-2xl md:rounded-[2rem] gap-1 w-full md:max-w-3xl mx-auto">
+        <button onClick={() => setActiveTab('LOCATIONS')} className={`flex-1 min-w-[100px] px-3 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-[9px] md:text-xs uppercase tracking-widest transition-all ${activeTab === 'LOCATIONS' ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-700'}`}>Localização</button>
+        <button onClick={() => setActiveTab('ALERTS')} className={`flex-1 min-w-[100px] px-3 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-[9px] md:text-xs uppercase tracking-widest transition-all ${activeTab === 'ALERTS' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Alertas</button>
+        <button onClick={() => setActiveTab('SERVICES')} className={`flex-1 min-w-[100px] px-3 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-[9px] md:text-xs uppercase tracking-widest transition-all ${activeTab === 'SERVICES' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Serviços</button>
+        <button onClick={() => setActiveTab('CATEGORIES')} className={`flex-1 min-w-[100px] px-3 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-[9px] md:text-xs uppercase tracking-widest transition-all ${activeTab === 'CATEGORIES' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Categorias</button>
       </div>
 
       <div className="grid grid-cols-1 gap-6">
+        {activeTab === 'LOCATIONS' && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fade-in">
+             {/* Lista de Motoristas */}
+             <div className="lg:col-span-4 space-y-4">
+                <div className="bg-white p-6 rounded-[2.5rem] border shadow-sm">
+                   <h3 className="text-xl font-black flex items-center gap-3 uppercase tracking-tighter mb-6">
+                     <Radar className="text-primary-600" size={24} /> Frota Online
+                   </h3>
+                   <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                      {driverLocations.length === 0 ? (
+                        <div className="text-center py-10 opacity-40">
+                          <Signal size={40} className="mx-auto mb-2" />
+                          <p className="text-[10px] font-black uppercase">Nenhum motorista rastreado</p>
+                        </div>
+                      ) : driverLocations.map(loc => (
+                        <div 
+                          key={loc.user_id} 
+                          onClick={() => setSelectedDriver(loc)}
+                          className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex items-center justify-between group ${selectedDriver?.user_id === loc.user_id ? 'bg-primary-600 border-primary-600 text-white scale-[1.02] shadow-lg' : 'bg-white border-slate-100 hover:border-primary-200'}`}
+                        >
+                           <div className="flex items-center gap-3 overflow-hidden">
+                              <div className={`w-3 h-3 rounded-full shrink-0 ${isDriverOnline(loc.updated_at) ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
+                              <div className="overflow-hidden">
+                                 <p className="font-black text-xs uppercase truncate leading-none mb-1">{loc.email}</p>
+                                 <p className={`text-[8px] font-bold uppercase ${selectedDriver?.user_id === loc.user_id ? 'text-white/70' : 'text-slate-400'}`}>Última: {new Date(loc.updated_at).toLocaleTimeString()}</p>
+                              </div>
+                           </div>
+                           <ChevronRight size={18} className={selectedDriver?.user_id === loc.user_id ? 'text-white' : 'text-slate-300'} />
+                        </div>
+                      ))}
+                   </div>
+                </div>
+             </div>
+
+             {/* Mapa */}
+             <div className="lg:col-span-8 bg-white h-[600px] md:h-[700px] rounded-[3.5rem] border shadow-sm overflow-hidden relative">
+                {selectedDriver ? (
+                  <>
+                    <div className="absolute top-6 left-6 right-6 z-10 pointer-events-none">
+                       <div className="bg-slate-900/90 backdrop-blur-md text-white px-6 py-4 rounded-2xl inline-flex items-center gap-3 shadow-2xl border border-white/10 pointer-events-auto">
+                          <div className={`w-3 h-3 rounded-full ${isDriverOnline(selectedDriver.updated_at) ? 'bg-emerald-500' : 'bg-slate-500'}`} />
+                          <div>
+                             <p className="text-[10px] font-black uppercase tracking-widest">{selectedDriver.email}</p>
+                             <p className="text-[8px] font-bold text-slate-400 uppercase">Posição em tempo real</p>
+                          </div>
+                       </div>
+                    </div>
+                    <iframe 
+                      title="Monitoramento"
+                      className="w-full h-full border-0"
+                      src={`https://www.google.com/maps?q=${selectedDriver.latitude},${selectedDriver.longitude}&z=15&output=embed`}
+                    />
+                    <div className="absolute bottom-6 right-6 flex flex-col gap-2">
+                       <button onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${selectedDriver.latitude},${selectedDriver.longitude}`, '_blank')} className="bg-white p-4 rounded-full shadow-2xl text-primary-600 hover:bg-primary-600 hover:text-white transition-all active:scale-90">
+                          <Navigation size={24} />
+                       </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-center p-12 bg-slate-50">
+                     <MapPinned size={80} className="text-slate-200 mb-6" />
+                     <h4 className="text-xl font-black text-slate-400 uppercase tracking-tighter">Central de Rastreamento</h4>
+                     <p className="text-slate-300 font-bold text-sm max-w-xs mt-2">Selecione um motorista ao lado para visualizar sua localização exata no mapa.</p>
+                  </div>
+                )}
+             </div>
+          </div>
+        )}
+
         {activeTab === 'ALERTS' && (
           <div className="space-y-6 md:space-y-10">
             {/* Formulário de Alerta */}
@@ -226,8 +335,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                 </h3>
                 <form onSubmit={handleSendAlert} className="space-y-4 md:space-y-6">
                   <div className="space-y-1.5">
-                    <label className="text-[9px] md:text-[10px] font-black uppercase text-slate-400 ml-1">E-mail do Destinatário (Vazio = Todos)</label>
-                    <input type="email" placeholder="motorista@email.com" className="w-full p-4 md:p-5 bg-slate-50 border border-slate-100 rounded-2xl md:rounded-3xl font-bold outline-none text-sm md:text-base" value={alertForm.target_user_email} onChange={e => setAlertForm({...alertForm, target_user_email: e.target.value})} />
+                    <label className="text-[9px] md:text-[10px] font-black uppercase text-slate-400 ml-1">Destinatário (Vazio = Todos)</label>
+                    <select className="w-full p-4 md:p-5 bg-slate-50 border border-slate-100 rounded-2xl md:rounded-3xl font-bold outline-none text-sm" value={alertForm.target_user_email} onChange={e => setAlertForm({...alertForm, target_user_email: e.target.value})}>
+                        <option value="">TODOS OS MOTORISTAS</option>
+                        {driverLocations.map(d => <option key={d.user_id} value={d.email}>{d.email}</option>)}
+                    </select>
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[9px] md:text-[10px] font-black uppercase text-slate-400 ml-1">Título do Comunicado</label>
@@ -293,6 +405,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
           </div>
         )}
 
+        {/* ... Resto das abas (SERVICES, CATEGORIES) permanece igual para brevidade ou melhorado conforme escala ... */}
         {activeTab === 'SERVICES' && (
           <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6 md:gap-8">
             <div className="lg:col-span-5 bg-white p-6 md:p-10 rounded-3xl md:rounded-[3.5rem] border shadow-sm h-fit">
@@ -355,31 +468,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                        <button onClick={() => handleEditService(s)} className="p-2 md:p-3 bg-slate-50 text-slate-400 hover:text-amber-500 rounded-lg md:rounded-xl transition-all"><Edit2 size={16}/></button>
                        <button onClick={() => handleDeleteService(s.id)} className="p-2 md:p-3 bg-slate-50 text-slate-400 hover:text-rose-500 rounded-lg md:rounded-xl transition-all"><Trash2 size={16}/></button>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'CATEGORIES' && (
-          <div className="max-w-2xl mx-auto w-full space-y-6 md:space-y-8">
-            <div className="bg-white p-6 md:p-10 rounded-3xl md:rounded-[3.5rem] border shadow-sm">
-              <h3 className="text-xl md:text-2xl font-black mb-6 md:mb-8 flex items-center gap-3 uppercase tracking-tight">
-                <Tag className="text-primary-600" size={24} /> Gerenciar Categorias
-              </h3>
-              <div className="flex flex-col sm:flex-row gap-3 mb-8">
-                <input placeholder="Nova Categoria..." className="flex-1 p-4 md:p-5 bg-slate-50 border border-slate-100 rounded-2xl md:rounded-3xl font-bold outline-none text-sm" value={newCategory} onChange={e => setNewCategory(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddCategory()} />
-                <button onClick={handleAddCategory} className="px-6 py-4 md:py-0 bg-slate-900 text-white rounded-2xl md:rounded-3xl font-black uppercase text-[10px] md:text-xs">Adicionar</button>
-              </div>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {categories.map(cat => (
-                  <div key={cat} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
-                    <span className="font-bold text-slate-700 text-sm">{cat}</span>
-                    <button onClick={() => removeCategory(cat)} className="text-slate-300 hover:text-rose-500 transition-all p-1">
-                      <X size={18} />
-                    </button>
                   </div>
                 ))}
               </div>

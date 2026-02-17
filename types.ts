@@ -146,3 +146,11 @@ export interface DbNotification {
   target_user_email?: string; // se nulo, envia para todos
   created_at: string;
 }
+
+export interface UserLocation {
+  user_id: string;
+  email: string;
+  latitude: number;
+  longitude: number;
+  updated_at: string;
+}

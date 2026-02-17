@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { LayoutDashboard, Truck, Wallet, Calculator, Menu, X, LogOut, Bell, Settings, CheckSquare, Timer, Fuel, Loader2, Mail, Key, UserPlus, LogIn, AlertCircle, Share2, AlertTriangle, KeyRound, Wifi, WifiOff, CloudUpload, CheckCircle2, Coffee, Play, RefreshCcw, Undo2, Send, Clock, ShieldAlert, MapPinHouse, Lock, ShieldCheck, Smartphone, Download } from 'lucide-react';
+import { LayoutDashboard, Truck, Wallet, Calculator, Menu, X, LogOut, Bell, Settings, CheckSquare, Timer, Fuel, Loader2, Mail, Key, UserPlus, LogIn, AlertCircle, Share2, AlertTriangle, KeyRound, Wifi, WifiOff, CloudUpload, CheckCircle2, Coffee, Play, RefreshCcw, Undo2, Send, Clock, ShieldAlert, MapPinHouse, Lock, ShieldCheck, Smartphone, Download, MapPin } from 'lucide-react';
 import { Dashboard } from './components/Dashboard';
 import { TripManager } from './components/TripManager';
 import { ExpenseManager } from './components/ExpenseManager';
@@ -55,6 +55,33 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('aurilog_dismissed_notifications', JSON.stringify(dismissedNotificationIds));
   }, [dismissedNotificationIds]);
+
+  // Serviço de Rastreamento de Localização (Usuário)
+  useEffect(() => {
+    if (!session?.user || !isUserMode || !navigator.geolocation) return;
+
+    const updateLocation = () => {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          try {
+            await supabase.from('user_locations').upsert({
+              user_id: session.user.id,
+              email: session.user.email,
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude,
+              updated_at: new Date().toISOString()
+            });
+          } catch (e) { console.error("Location track error:", e); }
+        },
+        (err) => console.log("Geolocation error:", err),
+        { enableHighAccuracy: true }
+      );
+    };
+
+    updateLocation(); // Primeira execução
+    const interval = setInterval(updateLocation, 30000); // A cada 30 segundos
+    return () => clearInterval(interval);
+  }, [session, isUserMode]);
 
   // Real-time listener para alertas administrativos e sincronização global
   useEffect(() => {
