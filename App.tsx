@@ -19,7 +19,12 @@ const App: React.FC = () => {
   const isUserMode = new URLSearchParams(window.location.search).get('mode') === 'user';
 
   const [session, setSession] = useState<any>(null);
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  
+  // Inicializa o estado de admin checando o localStorage para persistência no refresh
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
+    return localStorage.getItem('aurilog_admin_auth') === 'true';
+  });
+
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
@@ -387,7 +392,11 @@ const App: React.FC = () => {
         const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (error) throw new Error("E-mail ou senha incorretos.");
         if (data.session) {
-          if (!isUserMode) setIsAdminAuthenticated(true);
+          if (!isUserMode) {
+            setIsAdminAuthenticated(true);
+            // Salva no localStorage para persistir no refresh
+            localStorage.setItem('aurilog_admin_auth', 'true');
+          }
           else setSession(data.session);
           setSuccessMsg("Acesso autorizado!");
         }
@@ -398,6 +407,8 @@ const App: React.FC = () => {
   const handleAdminLogout = async () => {
     await supabase.auth.signOut();
     setIsAdminAuthenticated(false);
+    // Remove do localStorage ao sair
+    localStorage.removeItem('aurilog_admin_auth');
     window.location.reload();
   };
 
