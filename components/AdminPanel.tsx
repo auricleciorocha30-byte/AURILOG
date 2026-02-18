@@ -86,6 +86,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
     setLoading(true);
     try {
       // Carregamento resiliente: se categorias falhar, o resto carrega
+      // Ordenamos user_locations por updated_at desc para pegar sempre o mais recente no .find()
       const [tripsRes, expensesRes, vehiclesRes, maintenanceRes, driversRes, servicesRes, locRes] = await Promise.all([
         supabase.from('trips').select('*'),
         supabase.from('expenses').select('*'),
@@ -93,7 +94,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
         supabase.from('maintenance').select('*'),
         supabase.from('drivers').select('*'),
         supabase.from('road_services').select('*'),
-        supabase.from('user_locations').select('*')
+        supabase.from('user_locations').select('*').order('updated_at', { ascending: false })
       ]);
 
       if (tripsRes.data) setAllTrips(tripsRes.data);
@@ -116,7 +117,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
   };
 
   const refreshLocations = async () => {
-    const { data } = await supabase.from('user_locations').select('*');
+    // Garante que pegamos as localizações mais recentes primeiro
+    const { data } = await supabase.from('user_locations').select('*').order('updated_at', { ascending: false });
     if (data) setLocations(data);
   };
 
@@ -254,6 +256,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
 
   const driversWithLocations = useMemo(() => {
     return drivers.map(d => {
+      // Como locations está ordenado por updated_at desc, o .find() pega o mais recente
       const loc = locations.find(l => l.user_id === d.id || l.email === d.email);
       return { ...d, location: loc };
     });
@@ -420,7 +423,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                     <iframe 
                       title="Live Tracking" 
                       className="w-full h-full border-0 grayscale invert opacity-60 transition-all" 
-                      src={`https://maps.google.com/maps?q=${selectedDriverData.location.latitude},${selectedDriverData.location.longitude}&z=15&output=embed`} 
+                      src={`https://www.google.com/maps?q=${selectedDriverData.location.latitude},${selectedDriverData.location.longitude}&z=14&output=embed`} 
                     />
                  ) : (
                     <iframe title="Map Background" className="w-full h-full border-0 grayscale invert opacity-10" src="https://www.google.com/maps/embed?pb=!1m14!1m12!1m3!1d15000000!2d-50!3d-15!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!5e0!3m2!1sen!2sbr!4v1" />
