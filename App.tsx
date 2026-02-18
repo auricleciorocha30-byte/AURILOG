@@ -361,9 +361,12 @@ const App: React.FC = () => {
     // Filtra comunicados do banco que o usuário já "apagou"
     const visibleDbNotifications = dbNotifications.filter(n => !dismissedNotificationIds.includes(n.id));
     
+    // Filtra também as notificações do sistema (agora permitimos apagá-las)
+    const visibleSysNotifications = systemNotifications.filter(n => !dismissedNotificationIds.includes(n.id));
+    
     // Junta com os alertas automáticos do sistema (esses não são salvos no banco, são gerados na hora)
     // Ordena: Urgentes primeiro, depois por data
-    return [...systemNotifications, ...visibleDbNotifications].sort((a, b) => {
+    return [...visibleSysNotifications, ...visibleDbNotifications].sort((a, b) => {
        if (a.type === 'URGENT' && b.type !== 'URGENT') return -1;
        if (b.type === 'URGENT' && a.type !== 'URGENT') return 1;
        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
@@ -403,19 +406,10 @@ const App: React.FC = () => {
   };
 
   const handleDismissNotification = async (id: string) => {
-    // Se for notificação de sistema (começa com 'sys-'), apenas removemos visualmente da lista ativa
-    // (na prática, ela só sumirá definitivamente se o usuário resolver a pendência, ex: pagar a conta)
-    // Mas para comunicados do banco (Admin), salvamos no localStorage para nunca mais mostrar
-    
-    if (!id.startsWith('sys-')) {
-        const newDismissed = [...dismissedNotificationIds, id];
-        setDismissedNotificationIds(newDismissed);
-        localStorage.setItem('aurilog_dismissed_notifications', JSON.stringify(newDismissed));
-    }
-    
-    // Força atualização removendo da lista atual (para UX imediata)
-    // Para alertas de sistema, se a condição persistir, ele volta na próxima renderização ou login
-    // Para comunicados, o filtro 'activeNotifications' garantirá que não volte.
+    // Permite excluir qualquer notificação, seja do sistema ou do banco de dados
+    const newDismissed = [...dismissedNotificationIds, id];
+    setDismissedNotificationIds(newDismissed);
+    localStorage.setItem('aurilog_dismissed_notifications', JSON.stringify(newDismissed));
   };
 
   if (!authRole) {
@@ -425,7 +419,7 @@ const App: React.FC = () => {
         <div className={`absolute top-0 right-0 w-[500px] h-[500px] ${isAdmin ? 'bg-amber-500/10' : 'bg-primary-600/5'} blur-[120px] rounded-full -translate-y-1/2 translate-x-1/2`}></div>
         <div className="w-full max-w-md space-y-10 animate-fade-in z-10">
           <div className="text-center">
-             <div className={`inline-block p-6 ${isAdmin ? 'bg-amber-500 text-slate-950 shadow-amber-500/20' : 'bg-primary-600 text-white shadow-primary-600/20'} rounded-[2.5rem] shadow-2xl mb-8`}>
+             <div className={`inline-block p-6 ${isAdmin ? 'bg-amber-50 text-slate-950 shadow-amber-500/20' : 'bg-primary-600 text-white shadow-primary-600/20'} rounded-[2.5rem] shadow-2xl mb-8`}>
                 {isAdmin ? <ShieldCheck size={48} /> : <Truck size={48} />}
              </div>
              <h1 className={`text-5xl font-black tracking-tighter ${isAdmin ? 'text-white' : 'text-slate-900'}`}>
