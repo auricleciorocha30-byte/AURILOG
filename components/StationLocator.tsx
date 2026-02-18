@@ -17,13 +17,11 @@ export const StationLocator: React.FC<StationLocatorProps> = ({ roadServices = [
   const [manualLocation, setManualLocation] = useState("");
   const [activeService, setActiveService] = useState<any | null>(null);
 
-  // Categorias dinâmicas baseadas nos serviços cadastrados ou padrões
   const categories = Array.from(new Set([
     'Posto de Combustível', 'Restaurante', 'Oficina Diesel', 'Borracharia',
     ...roadServices.map(s => s.type)
   ]));
 
-  // Filtra os parceiros oficiais
   const officialPartners = roadServices.filter(s => s.type === selectedType);
 
   const getGeolocation = (): Promise<{ lat: number; lng: number }> => {
@@ -114,7 +112,6 @@ export const StationLocator: React.FC<StationLocatorProps> = ({ roadServices = [
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-6 pb-20 animate-fade-in px-4">
-      {/* Radar de Busca */}
       <div className="bg-slate-900 p-8 md:p-12 rounded-[3.5rem] text-white shadow-2xl border border-slate-800 relative overflow-hidden">
         <div className="absolute top-0 right-0 p-12 opacity-5">
           <Radar size={180} className="animate-pulse" />
@@ -162,7 +159,6 @@ export const StationLocator: React.FC<StationLocatorProps> = ({ roadServices = [
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Lista de Resultados */}
         <div className="lg:col-span-4 space-y-6 max-h-[800px] overflow-y-auto pr-2 custom-scrollbar">
           {officialPartners.length > 0 && (
             <div className="space-y-4">
@@ -218,16 +214,8 @@ export const StationLocator: React.FC<StationLocatorProps> = ({ roadServices = [
                ))}
             </div>
           )}
-
-          {officialPartners.length === 0 && services.length === 0 && !loading && (
-            <div className="text-center py-24 bg-white rounded-[3.5rem] border-2 border-dashed border-slate-100 opacity-60">
-               <MapPinHouse size={64} className="mx-auto text-slate-200 mb-4" />
-               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nenhum serviço selecionado</p>
-            </div>
-          )}
         </div>
 
-        {/* Visualização do Mapa */}
         <div className="lg:col-span-8 h-[800px] bg-white rounded-[4rem] border-2 border-slate-100 overflow-hidden relative shadow-sm flex flex-col">
           {activeService ? (
             <>
@@ -241,7 +229,7 @@ export const StationLocator: React.FC<StationLocatorProps> = ({ roadServices = [
                      <p className="text-slate-400 text-[10px] font-bold uppercase truncate">{activeService.address || 'Localização no Mapa'}</p>
                    </div>
                 </div>
-                <button onClick={() => window.open(activeService.uri, '_blank')} className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase flex items-center gap-2 shrink-0 ml-4 hover:bg-black transition-all">
+                <button onClick={() => window.open(activeService.uri, '_blank')} className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase flex items-center gap-2 shrink-0 ml-4">
                   <ExternalLink size={18}/> Maps
                 </button>
               </div>
@@ -251,23 +239,14 @@ export const StationLocator: React.FC<StationLocatorProps> = ({ roadServices = [
                   className="w-full h-full border-0"
                   src={`https://www.google.com/maps?q=${encodeURIComponent(activeService.address || activeService.title)}&output=embed`}
                   allowFullScreen
-                  loading="lazy"
                 ></iframe>
-              </div>
-              <div className="p-10 absolute bottom-0 left-0 right-0 pointer-events-none flex justify-center">
-                <button 
-                  onClick={() => openRoute(activeService.address || activeService.title)} 
-                  className="w-full md:w-auto md:px-16 py-6 bg-slate-900 text-white rounded-[2.5rem] font-black text-2xl flex items-center justify-center gap-5 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.3)] pointer-events-auto active:scale-95 transition-all"
-                >
-                  <Navigation size={32} className="fill-white" /> INICIAR GPS
-                </button>
               </div>
             </>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center p-20 text-center">
               <Radar size={120} className="text-slate-100 mb-8" />
               <h3 className="text-slate-400 font-black text-3xl uppercase tracking-tighter">Radar em Repouso</h3>
-              <p className="text-slate-300 font-bold mt-4 max-w-sm text-lg">Selecione um parceiro ou use o radar para encontrar serviços na sua rota.</p>
+              <p className="text-slate-300 font-bold mt-4 max-w-sm text-lg">Selecione um parceiro ou use o radar para encontrar serviços.</p>
             </div>
           )}
         </div>
@@ -275,9 +254,3 @@ export const StationLocator: React.FC<StationLocatorProps> = ({ roadServices = [
     </div>
   );
 };
-
-const ServiceTab = ({ active, icon: Icon, label, onClick }: any) => (
-  <button onClick={onClick} className={`flex items-center gap-3 px-6 py-4 rounded-2xl font-black text-xs transition-all tracking-widest uppercase ${active ? 'bg-primary-600 text-white shadow-xl scale-105' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>
-    <Icon size={20} /> <span>{label}</span>
-  </button>
-);

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { AppView, Trip, Expense, Vehicle, MaintenanceItem, JornadaLog, DbNotification, TripStatus, Driver } from './types';
+import { AppView, Trip, Expense, Vehicle, MaintenanceItem, JornadaLog, DbNotification, TripStatus, Driver, RoadService } from './types';
 import { supabase } from './lib/supabase';
 import { offlineStorage } from './lib/offlineStorage';
 import { Dashboard } from './components/Dashboard';
@@ -41,7 +41,6 @@ import {
 } from 'lucide-react';
 
 const App: React.FC = () => {
-  // Detector de Contexto: O padrão agora é ADMIN. MOTORISTA só entra via ?mode=driver
   const queryParams = new URLSearchParams(window.location.search);
   const isDriverContext = queryParams.get('mode') === 'driver';
 
@@ -59,6 +58,7 @@ const App: React.FC = () => {
   const [maintenance, setMaintenance] = useState<MaintenanceItem[]>([]);
   const [jornadaLogs, setJornadaLogs] = useState<JornadaLog[]>([]);
   const [notifications, setNotifications] = useState<DbNotification[]>([]);
+  const [roadServices, setRoadServices] = useState<RoadService[]>([]);
   
   const [isSaving, setIsSaving] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -70,7 +70,6 @@ const App: React.FC = () => {
   const [jornadaStartTime, setJornadaStartTime] = useState<number | null>(null);
   const [jornadaCurrentTime, setJornadaCurrentTime] = useState(0);
 
-  // Efeito para persistência de sessão (Recuperar login ao dar F5)
   useEffect(() => {
     const savedRole = localStorage.getItem('aurilog_role') as 'DRIVER' | 'ADMIN' | null;
     const savedUser = localStorage.getItem('aurilog_user');
@@ -125,13 +124,14 @@ const App: React.FC = () => {
     }
 
     try {
-      const [tripsRes, expensesRes, vehiclesRes, maintenanceRes, jornadaRes, notificationsRes] = await Promise.all([
+      const [tripsRes, expensesRes, vehiclesRes, maintenanceRes, jornadaRes, notificationsRes, servicesRes] = await Promise.all([
         supabase.from('trips').select('*').eq('user_id', userId).order('date', { ascending: false }),
         supabase.from('expenses').select('*').eq('user_id', userId).order('date', { ascending: false }),
         supabase.from('vehicles').select('*').eq('user_id', userId).order('plate', { ascending: true }),
         supabase.from('maintenance').select('*').eq('user_id', userId).order('purchase_date', { ascending: false }),
         supabase.from('jornada_logs').select('*').eq('user_id', userId).order('start_time', { ascending: false }),
-        supabase.from('notifications').select('*').or(`target_user_email.is.null,target_user_email.eq.${currentUser.email}`).order('created_at', { ascending: false })
+        supabase.from('notifications').select('*').or(`target_user_email.is.null,target_user_email.eq.${currentUser.email}`).order('created_at', { ascending: false }),
+        supabase.from('road_services').select('*').order('name', { ascending: true })
       ]);
       
       if (tripsRes.data) setTrips(tripsRes.data);
@@ -140,6 +140,7 @@ const App: React.FC = () => {
       if (maintenanceRes.data) setMaintenance(maintenanceRes.data);
       if (jornadaRes.data) setJornadaLogs(jornadaRes.data);
       if (notificationsRes.data) setNotifications(notificationsRes.data);
+      if (servicesRes.data) setRoadServices(servicesRes.data);
     } catch (error) {
       console.warn("Isolamento de dados offline.");
     }
@@ -365,7 +366,7 @@ const App: React.FC = () => {
           {currentView === AppView.MAINTENANCE && <MaintenanceManager maintenance={maintenance} vehicles={vehicles} onAddMaintenance={(m) => handleAction('maintenance', m, 'insert')} onDeleteMaintenance={(id) => handleAction('maintenance', { id }, 'delete')} isSaving={isSaving} />}
           {currentView === AppView.CALCULATOR && <FreightCalculator />}
           {currentView === AppView.JORNADA && <JornadaManager mode={jornadaMode} startTime={jornadaStartTime} currentTime={jornadaCurrentTime} logs={jornadaLogs} setMode={setJornadaMode} setStartTime={setStartTime => setJornadaStartTime(setStartTime)} onSaveLog={(l) => handleAction('jornada_logs', l, 'insert')} onDeleteLog={(id) => handleAction('jornada_logs', { id }, 'delete')} onClearHistory={async () => {}} addGlobalNotification={() => {}} isSaving={isSaving} />}
-          {currentView === AppView.STATIONS && <StationLocator />}
+          {currentView === AppView.STATIONS && <StationLocator roadServices={roadServices} />}
         </div>
       </main>
 

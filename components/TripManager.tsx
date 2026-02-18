@@ -36,7 +36,6 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
   const [pendingStatusUpdate, setPendingStatusUpdate] = useState<{id: string, status: TripStatus, vehicleId?: string} | null>(null);
   const [newVehicleKm, setNewVehicleKm] = useState<number>(0);
   
-  // Estado para o seletor de mapa (Tanto na lista quanto no modal)
   const [routeMenuId, setRouteMenuId] = useState<string | null>(null);
   const [isPreviewRouteOpen, setIsPreviewRouteOpen] = useState(false);
   
@@ -44,13 +43,6 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
   const [destination, setDestination] = useState({ city: '', state: 'SP' });
   const [stops, setStops] = useState<TripStop[]>([]);
   const [newStop, setNewStop] = useState({ city: '', state: 'SP' });
-
-  const [calcParams, setCalcParams] = useState({
-    planned_toll_cost: 0,
-    planned_daily_cost: 0,
-    planned_extra_costs: 0,
-    return_empty: false
-  });
 
   const [formData, setFormData] = useState<any>({
     description: '',
@@ -138,7 +130,7 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
     const vehicle = vehicles.find(v => v.id === formData.vehicle_id);
     if (!vehicle) return;
     const result = calculateANTT(formData.distance_km, vehicle.axles || 5, vehicle.cargo_type || 'geral', {
-      returnEmpty: calcParams.return_empty
+      returnEmpty: false
     });
     setFormData({ ...formData, agreed_price: Math.ceil(result.total) });
   };
@@ -234,12 +226,8 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 px-4">
         {sortedTrips.map(trip => {
           const vehicle = vehicles.find(v => v.id === trip.vehicle_id);
-          const isAtrasada = trip.status === TripStatus.SCHEDULED && trip.date < getTodayLocal();
-          const isHoje = trip.status === TripStatus.SCHEDULED && trip.date === getTodayLocal();
-          const isPending = (trip as any).sync_status === 'pending';
-
           return (
-            <div key={trip.id} className={`bg-white p-6 md:p-8 rounded-[3rem] border-2 shadow-sm relative group animate-fade-in transition-all ${isAtrasada ? 'border-rose-200 ring-4 ring-rose-50' : isHoje ? 'border-primary-200 ring-4 ring-primary-50' : 'border-slate-50'}`}>
+            <div key={trip.id} className={`bg-white p-6 md:p-8 rounded-[3rem] border-2 shadow-sm relative group animate-fade-in transition-all border-slate-50`}>
               <div className="flex flex-col gap-6">
                  <div className="flex-1">
                     <div className="flex flex-col items-start gap-2 mb-4 pr-20">
@@ -260,14 +248,13 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
                  </div>
               </div>
               <div className="mt-6 relative">
-                {routeMenuId === trip.id ? (
-                  <div className="bg-slate-900 rounded-2xl p-2 flex flex-col gap-1 animate-fade-in shadow-xl">
+                <button onClick={() => setRouteMenuId(trip.id)} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase flex items-center justify-center gap-2 hover:bg-black transition-all shadow-lg active:scale-95"><Navigation size={14} className="fill-white" /> Iniciar Rota GPS</button>
+                {routeMenuId === trip.id && (
+                  <div className="absolute inset-x-0 bottom-full mb-2 bg-slate-900 rounded-2xl p-2 flex flex-col gap-1 animate-fade-in shadow-xl z-50">
                     <button onClick={() => openGoogleMaps(trip.origin, trip.destination, trip.stops || [])} className="flex items-center justify-between w-full p-4 bg-white/5 hover:bg-white/10 rounded-xl text-white font-black text-[10px] uppercase transition-all">Abrir no Google Maps <MapIcon size={16} className="text-primary-400" /></button>
                     <button onClick={() => openWaze(trip.destination)} className="flex items-center justify-between w-full p-4 bg-white/5 hover:bg-white/10 rounded-xl text-white font-black text-[10px] uppercase transition-all">Abrir no Waze <Smartphone size={16} className="text-blue-400" /></button>
                     <button onClick={() => setRouteMenuId(null)} className="w-full py-2 text-slate-500 font-black text-[8px] uppercase">Cancelar</button>
                   </div>
-                ) : (
-                  <button onClick={() => setRouteMenuId(trip.id)} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase flex items-center justify-center gap-2 hover:bg-black transition-all shadow-lg active:scale-95"><Navigation size={14} className="fill-white" /> Iniciar Rota GPS</button>
                 )}
               </div>
               <div className="absolute top-6 right-6 flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
@@ -313,9 +300,6 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
               <div className="space-y-4 bg-slate-50 p-6 rounded-[3rem] border border-slate-100">
                 <div className="flex justify-between items-center mb-2 px-1">
                    <h4 className="text-[10px] font-black uppercase text-slate-400">Rota Principal</h4>
-                   {origin.city && destination.city && (
-                     <button onClick={() => setIsPreviewRouteOpen(!isPreviewRouteOpen)} className="flex items-center gap-2 text-[10px] font-black uppercase text-primary-600 bg-primary-50 px-4 py-2 rounded-xl"><MapPinCheck size={14}/> Ver Rota no Mapa</button>
-                   )}
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
