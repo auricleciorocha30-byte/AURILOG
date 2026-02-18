@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { AppView, Trip, Expense, Vehicle, MaintenanceItem, JornadaLog, DbNotification, TripStatus, Driver } from './types';
 import { supabase } from './lib/supabase';
@@ -35,16 +34,22 @@ import {
   Menu,
   AlertCircle,
   Database,
-  Info
+  ExternalLink,
+  ShieldAlert,
+  Smartphone
 } from 'lucide-react';
 
 const App: React.FC = () => {
+  // Detector de Contexto: O padrão agora é ADMIN. MOTORISTA só entra via ?mode=driver
+  const queryParams = new URLSearchParams(window.location.search);
+  const isDriverContext = queryParams.get('mode') === 'driver';
+
   const [authRole, setAuthRole] = useState<'DRIVER' | 'ADMIN' | null>(null);
-  const [loginMode, setLoginMode] = useState<'ADMIN' | 'DRIVER'>('ADMIN');
-  const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
+
+  const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
 
   // Data states
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -116,7 +121,7 @@ const App: React.FC = () => {
       if (jornadaRes.data) setJornadaLogs(jornadaRes.data);
       if (notificationsRes.data) setNotifications(notificationsRes.data);
     } catch (error) {
-      console.warn("Modo de isolamento de dados.");
+      console.warn("Isolamento de dados offline.");
     }
   }, [isOnline, currentUser]);
 
@@ -162,12 +167,9 @@ const App: React.FC = () => {
     if (!inputEmail || !inputPassword) return alert("Por favor, digite e-mail e senha.");
     
     setIsLoggingIn(true);
-    console.log(`Tentativa de Login como ${loginMode}:`, inputEmail);
 
-    // 1. FAILSAFE MASTER (Inabalável)
-    // Se você estiver tentando logar como ADMIN com estas credenciais, o login é imediato.
-    if (loginMode === 'ADMIN' && inputEmail === 'admin@aurilog.com' && inputPassword === 'admin123') {
-      console.log("Login MASTER aceito via Bypass.");
+    // 1. FAILSAFE MASTER (Somente se NÃO for contexto de motorista)
+    if (!isDriverContext && inputEmail === 'admin@aurilog.com' && inputPassword === 'admin123') {
       setCurrentUser({ id: '00000000-0000-0000-0000-000000000000', name: 'Gestor Master', email: 'admin@aurilog.com' });
       setAuthRole('ADMIN');
       setIsLoggingIn(false);
@@ -175,26 +177,22 @@ const App: React.FC = () => {
     }
 
     try {
-      const table = loginMode === 'ADMIN' ? 'admins' : 'drivers';
-      
-      // 2. Consulta ao Supabase
+      // Tabela baseada no contexto da URL
+      const table = isDriverContext ? 'drivers' : 'admins';
       const { data: dbUser, error } = await supabase.from(table)
         .select('*')
         .eq('email', inputEmail)
         .eq('password', inputPassword)
         .maybeSingle();
       
-      if (error) {
-        console.error("Erro Supabase:", error);
-        throw new Error(`Falha de conexão com a tabela '${table}': ${error.message}`);
-      }
+      if (error) throw new Error(`Conexão com banco falhou: ${error.message}`);
 
       if (!dbUser) {
-        throw new Error(`Credenciais inválidas para ${loginMode}.\n\nPara Administrador: Use admin@aurilog.com / admin123\n\nPara Motorista: Verifique se o e-mail '${inputEmail}' foi cadastrado no Painel de Gestão.`);
+        throw new Error(`Credenciais inválidas no Portal ${isDriverContext ? 'do Motorista' : 'Administrativo'}.`);
       }
       
       setCurrentUser(dbUser);
-      setAuthRole(loginMode);
+      setAuthRole(isDriverContext ? 'DRIVER' : 'ADMIN');
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -208,89 +206,126 @@ const App: React.FC = () => {
     setLoginForm({ email: '', password: '' });
   };
 
-  const handleUnlockDriverApp = () => {
-    setAuthRole('DRIVER');
-    setCurrentView(AppView.DASHBOARD);
+  const handleOpenDriverAppInNewTab = () => {
+    const url = window.location.origin + '?mode=driver';
+    window.open(url, '_blank');
   };
 
-  if (!authRole) {
+  // TELA DE LOGIN INDEPENDENTE - MOTORISTA (Só aparece se mode=driver)
+  if (!authRole && isDriverContext) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 relative overflow-hidden font-['Plus_Jakarta_Sans']">
-        <div className="absolute inset-0 pointer-events-none opacity-20">
-          <div className={`absolute top-0 left-0 w-full h-full transition-all duration-1000 ${loginMode === 'ADMIN' ? 'bg-primary-900/40' : 'bg-emerald-900/40'}`}></div>
-          <div className="absolute top-[-20%] left-[-20%] w-[60%] h-[60%] bg-primary-600 rounded-full blur-[180px]"></div>
-          <div className="absolute bottom-[-20%] right-[-20%] w-[60%] h-[60%] bg-emerald-600 rounded-full blur-[180px]"></div>
-        </div>
-
-        <div className="w-full max-w-md relative z-10 space-y-8">
-          <div className="text-center animate-fade-in">
-             <div className="inline-block px-4 py-1 rounded-full bg-white/5 border border-white/10 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-6">
-                Controle de Transportes
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 relative overflow-hidden font-['Plus_Jakarta_Sans']">
+        <div className="w-full max-w-md relative z-10 space-y-10 animate-fade-in">
+          <div className="text-center">
+             <div className="inline-block p-4 bg-primary-600 text-white rounded-[2rem] shadow-2xl shadow-primary-600/30 mb-8">
+                <Truck size={40} />
              </div>
-             <h1 className="text-6xl font-black tracking-tighter text-white leading-none">AURILOG</h1>
-             <p className="text-slate-500 font-bold uppercase tracking-widest text-xs mt-4">
-                {loginMode === 'ADMIN' ? 'Acesso Gestão (Portal Admin)' : 'Acesso Motorista (Operacional)'}
-             </p>
+             <h1 className="text-5xl font-black tracking-tighter text-slate-900 leading-none">AURILOG</h1>
+             <p className="text-slate-400 font-bold uppercase tracking-widest text-[11px] mt-4">Aplicativo do Motorista</p>
           </div>
 
-          <div className="bg-white/5 backdrop-blur-3xl p-8 md:p-10 rounded-[3rem] border border-white/10 shadow-2xl space-y-8 animate-slide-up">
-            <div className={`p-4 rounded-2xl border text-[10px] font-black uppercase tracking-widest text-center flex items-center justify-center gap-2 ${loginMode === 'ADMIN' ? 'bg-amber-500/10 border-amber-500/30 text-amber-500' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500'}`}>
-               {loginMode === 'ADMIN' ? <Lock size={14}/> : <Truck size={14}/>}
-               {loginMode === 'ADMIN' ? 'Modo: Administrador' : 'Modo: Motorista'}
-            </div>
-
+          <div className="bg-white p-10 rounded-[3.5rem] border shadow-2xl space-y-8">
             <div className="space-y-4">
               <div className="relative group">
-                <User className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-primary-400 transition-colors" size={20} />
+                <User className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-primary-600 transition-colors" size={20} />
                 <input 
                   type="email" 
-                  autoComplete="email"
-                  placeholder="E-mail" 
-                  className="w-full bg-white/5 border border-white/10 p-6 pl-14 rounded-3xl text-white outline-none focus:ring-4 focus:ring-primary-500/30 transition-all font-bold placeholder:text-slate-700" 
+                  placeholder="Seu E-mail" 
+                  className="w-full bg-slate-50 border-none p-6 pl-16 rounded-3xl text-slate-900 outline-none focus:ring-4 focus:ring-primary-600/10 transition-all font-bold placeholder:text-slate-300" 
                   value={loginForm.email} 
                   onChange={e => setLoginForm({...loginForm, email: e.target.value})} 
                 />
               </div>
               <div className="relative group">
-                <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-primary-400 transition-colors" size={20} />
+                <Lock className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-primary-600 transition-colors" size={20} />
                 <input 
                   type="password" 
-                  placeholder="Senha" 
-                  className="w-full bg-white/5 border border-white/10 p-6 pl-14 rounded-3xl text-white outline-none focus:ring-4 focus:ring-primary-500/30 transition-all font-bold placeholder:text-slate-700" 
+                  placeholder="Sua Senha" 
+                  className="w-full bg-slate-50 border-none p-6 pl-16 rounded-3xl text-slate-900 outline-none focus:ring-4 focus:ring-primary-600/10 transition-all font-bold placeholder:text-slate-300" 
                   value={loginForm.password} 
                   onChange={e => setLoginForm({...loginForm, password: e.target.value})} 
                 />
               </div>
             </div>
 
-            <button onClick={handleLogin} disabled={isLoggingIn} className={`w-full py-6 rounded-3xl font-black uppercase text-xs shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3 ${loginMode === 'ADMIN' ? 'bg-primary-600 text-white shadow-primary-600/30' : 'bg-emerald-600 text-white shadow-emerald-600/30'}`}>
-              {isLoggingIn ? <Loader2 className="animate-spin" /> : loginMode === 'ADMIN' ? <ShieldCheck size={20} /> : <Truck size={20} />}
-              {loginMode === 'ADMIN' ? 'Acessar Gestão' : 'Entrar no Aplicativo'}
+            <button onClick={handleLogin} disabled={isLoggingIn} className="w-full py-6 bg-primary-600 text-white rounded-3xl font-black uppercase text-xs shadow-xl shadow-primary-600/30 active:scale-95 transition-all flex items-center justify-center gap-3">
+              {isLoggingIn ? <Loader2 className="animate-spin" /> : <ExternalLink size={20} />}
+              Acessar Aplicativo
             </button>
-            
-            <div className="text-center pt-2">
-               <button onClick={() => { setLoginMode(loginMode === 'ADMIN' ? 'DRIVER' : 'ADMIN'); setLoginForm({email: '', password: ''}); }} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-white transition-colors flex items-center justify-center gap-2 mx-auto">
-                 <AlertCircle size={12}/> {loginMode === 'ADMIN' ? 'Entrar como Motorista' : 'Entrar como Administrador'}
-               </button>
-            </div>
           </div>
           
-          <div className="text-center space-y-4 opacity-40">
-             <div className="flex items-center justify-center gap-4 text-slate-600 text-[9px] font-bold uppercase tracking-widest">
-               <span>Versão 6.3</span>
-               <span className="w-1 h-1 bg-slate-800 rounded-full"></span>
-               <span className="flex items-center gap-1"><Database size={10}/> Supabase Verified</span>
-             </div>
+          <div className="text-center opacity-40 px-8">
+             <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest leading-relaxed">
+               Problemas com o acesso? Entre em contato com seu gestor de frota.
+             </p>
           </div>
         </div>
       </div>
     );
   }
 
-  if (authRole === 'ADMIN') {
-    return <AdminPanel onRefresh={() => {}} onLogout={handleLogout} onUnlockDriverApp={handleUnlockDriverApp} />;
+  // TELA DE LOGIN INDEPENDENTE - GESTÃO (TELA PADRÃO DO APP)
+  if (!authRole) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 relative overflow-hidden font-['Plus_Jakarta_Sans']">
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-[-20%] left-[-20%] w-[60%] h-[60%] bg-primary-900/30 rounded-full blur-[180px]"></div>
+          <div className="absolute bottom-[-20%] right-[-20%] w-[60%] h-[60%] bg-amber-900/20 rounded-full blur-[180px]"></div>
+        </div>
+
+        <div className="w-full max-w-md relative z-10 space-y-8 animate-fade-in">
+          <div className="text-center">
+             <div className="inline-block px-4 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-[10px] font-black uppercase tracking-[0.2em] text-amber-500 mb-6">
+                Management Portal
+             </div>
+             <h1 className="text-6xl font-black tracking-tighter text-white leading-none">AURI<span className="text-amber-500">LOG</span></h1>
+             <p className="text-slate-500 font-bold uppercase tracking-widest text-[10px] mt-4">Painel de Auditoria e Controle de Frota</p>
+          </div>
+
+          <div className="bg-white/5 backdrop-blur-3xl p-10 rounded-[3rem] border border-white/10 shadow-2xl space-y-8">
+            <div className="space-y-4">
+              <div className="relative group">
+                <ShieldCheck className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-amber-500 transition-colors" size={20} />
+                <input 
+                  type="email" 
+                  placeholder="E-mail Administrativo" 
+                  className="w-full bg-white/5 border border-white/10 p-6 pl-16 rounded-3xl text-white outline-none focus:ring-4 focus:ring-amber-500/20 transition-all font-bold placeholder:text-slate-700" 
+                  value={loginForm.email} 
+                  onChange={e => setLoginForm({...loginForm, email: e.target.value})} 
+                />
+              </div>
+              <div className="relative group">
+                <Lock className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-amber-500 transition-colors" size={20} />
+                <input 
+                  type="password" 
+                  placeholder="Senha de Gestor" 
+                  className="w-full bg-white/5 border border-white/10 p-6 pl-16 rounded-3xl text-white outline-none focus:ring-4 focus:ring-amber-500/20 transition-all font-bold placeholder:text-slate-700" 
+                  value={loginForm.password} 
+                  onChange={e => setLoginForm({...loginForm, password: e.target.value})} 
+                />
+              </div>
+            </div>
+
+            <button onClick={handleLogin} disabled={isLoggingIn} className="w-full py-6 bg-amber-600 text-white rounded-3xl font-black uppercase text-xs shadow-2xl shadow-amber-600/20 active:scale-95 transition-all flex items-center justify-center gap-3">
+              {isLoggingIn ? <Loader2 className="animate-spin" /> : <Database size={20} />}
+              Entrar no Painel Master
+            </button>
+          </div>
+          
+          <div className="text-center opacity-30">
+             <p className="text-slate-600 text-[9px] font-black uppercase tracking-widest">Acesso Restrito a Administradores</p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
+  // Visualização Admin
+  if (authRole === 'ADMIN') {
+    return <AdminPanel onRefresh={() => {}} onLogout={handleLogout} onUnlockDriverApp={handleOpenDriverAppInNewTab} />;
+  }
+
+  // Visualização Motorista (Operacional)
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-['Plus_Jakarta_Sans'] overflow-hidden">
       <div className={`fixed md:relative inset-0 md:inset-auto z-40 bg-white md:bg-transparent ${isMenuOpen ? 'flex' : 'hidden'} md:flex md:w-80 md:flex-col md:border-r p-6 md:sticky md:top-0 md:h-screen transition-all shadow-sm`}>
@@ -318,6 +353,7 @@ const App: React.FC = () => {
             {isOnline ? <Wifi size={16} /> : <WifiOff size={16} />}
             {isOnline ? 'Conectado' : 'Offline'}
           </div>
+          {/* Fix: Added missing onClick attribute for the logout button */}
           <button onClick={handleLogout} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase text-rose-500 hover:bg-rose-50 transition-all">
             <LogOut size={20} /> Sair
           </button>

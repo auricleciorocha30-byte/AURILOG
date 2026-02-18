@@ -269,7 +269,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, onU
 
   return (
     <div className="max-w-7xl mx-auto space-y-4 md:space-y-8 animate-fade-in py-6 md:py-12 px-4 pb-32">
-      {/* Header Administrativo */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-6 md:p-8 rounded-3xl md:rounded-[3rem] border shadow-sm">
         <div className="flex items-center gap-4">
           <div className="p-4 bg-primary-600 text-white rounded-3xl shadow-xl shadow-primary-600/20">
@@ -277,18 +276,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, onU
           </div>
           <div>
             <h2 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tighter uppercase leading-none">Painel Master</h2>
-            <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest mt-1 flex items-center gap-2">
-              Gestão de Frota & Operações
-            </p>
+            <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest mt-1">Gestão Central de Frota</p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {/* BOTÃO CRÍTICO: LIBERAR ACESSO MOTORISTA */}
+          {/* Abre o App do Motorista em uma nova guia para facilitar a auditoria do gestor */}
           <button 
             onClick={onUnlockDriverApp} 
             className="flex items-center gap-3 px-8 py-5 bg-emerald-600 text-white rounded-2xl font-black text-[11px] uppercase shadow-xl shadow-emerald-600/20 hover:bg-emerald-700 active:scale-95 transition-all"
           >
-            <Unlock size={18} /> Abrir App Motorista
+            <Smartphone size={18} /> Abrir App Motorista (Nova Guia)
           </button>
           <button 
             onClick={onLogout} 
@@ -299,7 +296,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, onU
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="flex flex-wrap bg-slate-200 p-1 rounded-2xl md:rounded-[2rem] gap-1 w-full md:max-w-5xl mx-auto overflow-x-auto no-scrollbar">
         <button onClick={() => setActiveTab('LOCATIONS')} className={`flex-1 min-w-[100px] px-3 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-[8px] md:text-[10px] uppercase tracking-widest transition-all ${activeTab === 'LOCATIONS' ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-700'}`}>Monitorar</button>
         <button onClick={() => setActiveTab('DRIVERS')} className={`flex-1 min-w-[100px] px-3 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-[8px] md:text-[10px] uppercase tracking-widest transition-all ${activeTab === 'DRIVERS' ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-700'}`}>Motoristas</button>
@@ -310,8 +306,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, onU
       </div>
 
       <div className="grid grid-cols-1 gap-6">
-        
-        {/* MONITORAMENTO */}
         {activeTab === 'LOCATIONS' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
              <div className="lg:col-span-4 bg-white p-6 rounded-[2.5rem] border shadow-sm flex flex-col h-[700px]">
@@ -355,7 +349,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, onU
           </div>
         )}
 
-        {/* CADASTRO DE MOTORISTAS */}
         {activeTab === 'DRIVERS' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fade-in">
              <div className="lg:col-span-5 bg-white p-8 md:p-12 rounded-[3rem] border shadow-sm h-fit">
@@ -402,7 +395,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, onU
           </div>
         )}
 
-        {/* ALERTAS */}
         {activeTab === 'ALERTS' && (
           <div className="max-w-4xl mx-auto w-full space-y-10 animate-fade-in">
              <div className="bg-white p-8 md:p-12 rounded-[3.5rem] border shadow-sm">
@@ -459,7 +451,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, onU
           </div>
         )}
 
-        {/* SERVIÇOS NA ESTRADA */}
         {activeTab === 'SERVICES' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fade-in">
              <div className="lg:col-span-5 bg-white p-8 md:p-12 rounded-[3.5rem] border shadow-sm h-fit">
@@ -523,7 +514,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, onU
           </div>
         )}
 
-        {/* EXPLORADOR DE DADOS */}
         {activeTab === 'EXPLORER' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fade-in">
              <div className="lg:col-span-4 bg-white p-6 rounded-[2.5rem] border shadow-sm flex flex-col h-[600px]">
@@ -584,7 +574,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, onU
              </div>
           </div>
         )}
-
       </div>
     </div>
   );

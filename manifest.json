@@ -3,7 +3,7 @@
   "name": "AuriLog Logistics",
   "short_name": "AuriLog",
   "description": "Gestão inteligente de transporte de cargas e jornada para motoristas profissionais.",
-  "start_url": "./index.html?mode=user",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#020617",
   "theme_color": "#4f46e5",
@@ -26,12 +26,12 @@
   "shortcuts": [
     {
       "name": "Nova Viagem",
-      "url": "/?mode=user&view=TRIPS",
+      "url": "/?mode=driver&view=TRIPS",
       "icons": [{ "src": "https://cdn-icons-png.flaticon.com/512/2312/2312487.png", "sizes": "192x192" }]
     },
     {
-      "name": "Dashboard",
-      "url": "/?mode=user&view=DASHBOARD"
+      "name": "Painel Gestão",
+      "url": "/"
     }
   ]
 }
