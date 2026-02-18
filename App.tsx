@@ -77,6 +77,7 @@ const App: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isGpsActive, setIsGpsActive] = useState(false);
+  const [gpsError, setGpsError] = useState<string | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   
@@ -89,7 +90,6 @@ const App: React.FC = () => {
 
   // Refs para controle do GPS
   const lastLocationSent = useRef<number>(0);
-  const watchIdRef = useRef<number | null>(null);
 
   // Captura evento de instalação PWA
   useEffect(() => {
@@ -110,70 +110,67 @@ const App: React.FC = () => {
     }
   };
 
-  // Rastreamento de Localização (Apenas para Motoristas) - LÓGICA REFORMULADA
+  // Rastreamento de Localização (Apenas para Motoristas) - LÓGICA ROBUSTA COM RECONEXÃO
   useEffect(() => {
-    // Limpa qualquer watcher anterior ao mudar status
-    if (watchIdRef.current !== null) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
-    }
+    let watchId: number | null = null;
+    let retryTimer: any = null;
 
-    // Só ativa se for Motorista, estiver logado e Online
-    if (authRole === 'DRIVER' && currentUser && isOnline) {
-      
-      if (!navigator.geolocation) {
-        console.warn("Navegador sem suporte a GPS");
-        setIsGpsActive(false);
-        return;
-      }
+    const startGpsTracking = () => {
+      // Limpa watcher anterior se existir
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
 
-      const sendLocationToSupabase = async (lat: number, lng: number) => {
-        const now = Date.now();
-        // Envia apenas se passou 30 segundos desde o último envio para não sobrecarregar
-        if (now - lastLocationSent.current < 30000) return;
-
-        try {
-          lastLocationSent.current = now;
-          await supabase.from('user_locations').upsert({
-            user_id: currentUser.id,
-            email: currentUser.email,
-            latitude: lat,
-            longitude: lng,
-            updated_at: new Date().toISOString()
-          }, { onConflict: 'user_id' });
-          // Sucesso silencioso no envio
-        } catch (err) {
-          console.error("Erro envio GPS (silencioso):", err);
-        }
-      };
-
-      // Usa watchPosition para rastreamento contínuo (mais confiável em movimento)
-      watchIdRef.current = navigator.geolocation.watchPosition(
-        (pos) => {
-          // Assim que recebermos uma coordenada válida, o GPS está "Ativo" visualmente
-          setIsGpsActive(true);
-          sendLocationToSupabase(pos.coords.latitude, pos.coords.longitude);
-        }, 
-        (error) => {
-          console.warn("Erro de permissão/sinal GPS:", error.message);
+      if (authRole === 'DRIVER' && currentUser && isOnline) {
+        if (!navigator.geolocation) {
+          setGpsError("GPS não suportado neste dispositivo.");
           setIsGpsActive(false);
-        }, 
-        { 
-          enableHighAccuracy: true, 
-          timeout: 15000, 
-          maximumAge: 0 
+          return;
         }
-      );
-    } else {
-      setIsGpsActive(false);
-    }
 
-    // Cleanup ao desmontar ou mudar dependências
-    return () => {
-      if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-        watchIdRef.current = null;
+        watchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            setIsGpsActive(true);
+            setGpsError(null);
+            
+            const now = Date.now();
+            // Envia se for a primeira vez (0) ou se passou 30 segundos
+            if (lastLocationSent.current === 0 || now - lastLocationSent.current >= 30000) {
+              lastLocationSent.current = now;
+              supabase.from('user_locations').upsert({
+                user_id: currentUser.id,
+                email: currentUser.email,
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude,
+                updated_at: new Date().toISOString()
+              }, { onConflict: 'user_id' }).then(({ error }) => {
+                if (error) console.error("Erro silencioso GPS update:", error.message);
+              });
+            }
+          },
+          (err) => {
+            console.warn("Perda de sinal GPS:", err.message);
+            setIsGpsActive(false);
+            setGpsError("Sinal perdido. Reconectando...");
+            
+            // Tenta reiniciar o rastreamento em 5 segundos
+            if (retryTimer) clearTimeout(retryTimer);
+            retryTimer = setTimeout(startGpsTracking, 5000);
+          },
+          { 
+            enableHighAccuracy: true, 
+            timeout: 20000, // Aumentado para tolerar demoras na rede/satélite
+            maximumAge: 5000 // Aceita cache de até 5s para evitar leituras repetidas instantâneas
+          }
+        );
+      } else {
+        setIsGpsActive(false);
       }
+    };
+
+    startGpsTracking();
+
+    return () => {
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      if (retryTimer) clearTimeout(retryTimer);
     };
   }, [authRole, currentUser, isOnline]);
 
@@ -508,12 +505,13 @@ const App: React.FC = () => {
             </button>
           )}
 
-          <div className="px-6 py-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between">
+          <div className="px-6 py-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between group relative cursor-help" title={gpsError || "GPS Ativo"}>
              <div className="flex items-center gap-2">
                 <Navigation size={14} className={isGpsActive ? 'text-emerald-500' : 'text-slate-300'} />
                 <span className="text-[9px] font-black uppercase text-slate-500 tracking-widest">GPS Status</span>
              </div>
-             <div className={`w-2 h-2 rounded-full ${isGpsActive ? 'bg-emerald-500 shadow-[0_0_8px_#10b981] animate-pulse' : 'bg-slate-300'}`}></div>
+             <div className={`w-2 h-2 rounded-full ${isGpsActive ? 'bg-emerald-500 shadow-[0_0_8px_#10b981] animate-pulse' : 'bg-rose-300'}`}></div>
+             {gpsError && <div className="absolute bottom-full left-0 mb-2 w-48 p-2 bg-rose-500 text-white text-[9px] rounded-xl shadow-lg z-50">{gpsError}</div>}
           </div>
           <button onClick={() => setShowNotifications(true)} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase text-slate-500 hover:bg-slate-100 transition-all relative">
             <Bell size={20} /> Notificações
