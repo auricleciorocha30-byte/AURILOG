@@ -206,7 +206,7 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
   };
 
   return (
-    <div className="space-y-6 pb-20 max-w-7xl mx-auto">
+    <div className="space-y-6 pb-20 max-w-7xl mx-auto animate-fade-in">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 px-4">
         <div>
           <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">Minhas Viagens</h2>
@@ -227,7 +227,7 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
         {sortedTrips.map(trip => {
           const vehicle = vehicles.find(v => v.id === trip.vehicle_id);
           return (
-            <div key={trip.id} className={`bg-white p-6 md:p-8 rounded-[3rem] border-2 shadow-sm relative group animate-fade-in transition-all border-slate-50`}>
+            <div key={trip.id} className="bg-white p-6 md:p-8 rounded-[3rem] border-2 shadow-sm relative group animate-fade-in transition-all border-slate-50">
               <div className="flex flex-col gap-6">
                  <div className="flex-1">
                     <div className="flex flex-col items-start gap-2 mb-4 pr-20">
@@ -250,7 +250,7 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
               <div className="mt-6 relative">
                 <button onClick={() => setRouteMenuId(trip.id)} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase flex items-center justify-center gap-2 hover:bg-black transition-all shadow-lg active:scale-95"><Navigation size={14} className="fill-white" /> Iniciar Rota GPS</button>
                 {routeMenuId === trip.id && (
-                  <div className="absolute inset-x-0 bottom-full mb-2 bg-slate-900 rounded-2xl p-2 flex flex-col gap-1 animate-fade-in shadow-xl z-50">
+                  <div className="absolute inset-x-0 bottom-full mb-2 bg-slate-900 rounded-2xl p-2 flex flex-col gap-1 animate-fade-in shadow-xl z-50 border border-white/10">
                     <button onClick={() => openGoogleMaps(trip.origin, trip.destination, trip.stops || [])} className="flex items-center justify-between w-full p-4 bg-white/5 hover:bg-white/10 rounded-xl text-white font-black text-[10px] uppercase transition-all">Abrir no Google Maps <MapIcon size={16} className="text-primary-400" /></button>
                     <button onClick={() => openWaze(trip.destination)} className="flex items-center justify-between w-full p-4 bg-white/5 hover:bg-white/10 rounded-xl text-white font-black text-[10px] uppercase transition-all">Abrir no Waze <Smartphone size={16} className="text-blue-400" /></button>
                     <button onClick={() => setRouteMenuId(null)} className="w-full py-2 text-slate-500 font-black text-[8px] uppercase">Cancelar</button>
@@ -271,7 +271,7 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
           <div className="bg-white w-full max-w-2xl rounded-t-[4rem] md:rounded-[3rem] shadow-2xl animate-slide-up relative h-[92vh] md:h-auto overflow-y-auto pb-10">
             <div className="flex justify-between items-center p-6 md:p-10 pb-4">
               <div>
-                <span className="text-xs font-black uppercase text-primary-600 tracking-widest">Roteirização</span>
+                <span className="text-xs font-black uppercase text-primary-600 tracking-widest">Roteirização Operacional</span>
                 <h3 className="text-3xl font-black uppercase tracking-tighter mt-1 leading-none">{editingTripId ? 'Editar Viagem' : 'Novo Frete'}</h3>
               </div>
               <button onClick={() => { resetForm(); setIsModalOpen(false); }} className="bg-slate-100 p-4 rounded-full text-slate-400"><X size={28} /></button>
@@ -285,11 +285,11 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Data da Viagem</label>
-                  <input type="date" className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-primary-500 rounded-2xl font-bold outline-none" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+                  <label className="text-[10px] font-black uppercase text-primary-600 ml-1 flex items-center gap-2"><Calendar size={14}/> Data da Viagem</label>
+                  <input type="date" className="w-full p-5 bg-slate-50 border-2 border-primary-100 focus:border-primary-500 rounded-2xl font-black outline-none text-base" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Veículo</label>
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1 flex items-center gap-2"><Truck size={14}/> Veículo</label>
                   <select className="w-full p-5 bg-slate-50 rounded-2xl border-none font-bold outline-none" value={formData.vehicle_id} onChange={e => setFormData({...formData, vehicle_id: e.target.value})}>
                     <option value="">Selecione...</option>
                     {vehicles.map(v => <option key={v.id} value={v.id}>{v.plate} - {v.model}</option>)}
@@ -299,7 +299,7 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
 
               <div className="space-y-4 bg-slate-50 p-6 rounded-[3rem] border border-slate-100">
                 <div className="flex justify-between items-center mb-2 px-1">
-                   <h4 className="text-[10px] font-black uppercase text-slate-400">Rota Principal</h4>
+                   <h4 className="text-[10px] font-black uppercase text-slate-400">Trajeto</h4>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
@@ -331,8 +331,8 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
               </div>
 
               <button disabled={isSaving} onClick={handleSave} className="w-full py-8 bg-primary-600 text-white rounded-[2.5rem] font-black text-2xl shadow-2xl flex items-center justify-center gap-4 active:scale-95 transition-all mb-8">
-                {isSaving ? <Loader2 className="animate-spin" /> : <ShieldCheck size={32}/>}
-                {isSaving ? 'Salvando...' : 'Confirmar Viagem'}
+                {isSaving ? <Loader2 className="animate-spin" /> : <CheckCircle2 size={32}/>}
+                {isSaving ? 'Gravando...' : 'Salvar Viagem'}
               </button>
             </div>
           </div>
