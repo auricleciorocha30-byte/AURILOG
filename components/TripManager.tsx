@@ -109,12 +109,10 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
     setStops(stops.filter((_, i) => i !== index));
   };
 
-  // Funções de Roteirização (Unificadas para lista e preview)
   const openGoogleMaps = (tripOrigin: string, tripDest: string, tripStops: TripStop[]) => {
     const originStr = `${tripOrigin}, Brasil`.replace(' - ', ', ');
     const destStr = `${tripDest}, Brasil`.replace(' - ', ', ');
     let url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originStr)}&destination=${encodeURIComponent(destStr)}&travelmode=driving`;
-    
     if (tripStops && tripStops.length > 0) {
       const waypointsStr = tripStops.map(s => `${s.city}, ${s.state}, Brasil`).join('|');
       url += `&waypoints=${encodeURIComponent(waypointsStr)}`;
@@ -139,18 +137,9 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
     }
     const vehicle = vehicles.find(v => v.id === formData.vehicle_id);
     if (!vehicle) return;
-
-    const result = calculateANTT(
-      formData.distance_km, 
-      vehicle.axles || 5, 
-      vehicle.cargo_type || 'geral',
-      {
-        toll: calcParams.planned_toll_cost,
-        daily: calcParams.planned_daily_cost,
-        other: calcParams.planned_extra_costs,
-        returnEmpty: calcParams.return_empty
-      }
-    );
+    const result = calculateANTT(formData.distance_km, vehicle.axles || 5, vehicle.cargo_type || 'geral', {
+      returnEmpty: calcParams.return_empty
+    });
     setFormData({ ...formData, agreed_price: Math.ceil(result.total) });
   };
 
@@ -213,18 +202,14 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
       notes: formData.notes?.trim() || "",
       stops: stops
     };
-    
     try {
-      if (editingTripId) { 
-        await onUpdateTrip(editingTripId, payload); 
-      } else { 
-        await onAddTrip(payload); 
-      }
+      if (editingTripId) await onUpdateTrip(editingTripId, payload);
+      else await onAddTrip(payload);
       setIsModalOpen(false);
       resetForm();
     } catch (err) {
       console.error("Erro ao salvar viagem:", err);
-      alert("Erro ao salvar. Verifique se o banco de dados está atualizado com a coluna 'description'.");
+      alert("Erro ao salvar. Verifique sua conexão.");
     }
   };
 
@@ -255,97 +240,36 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
 
           return (
             <div key={trip.id} className={`bg-white p-6 md:p-8 rounded-[3rem] border-2 shadow-sm relative group animate-fade-in transition-all ${isAtrasada ? 'border-rose-200 ring-4 ring-rose-50' : isHoje ? 'border-primary-200 ring-4 ring-primary-50' : 'border-slate-50'}`}>
-              {(isAtrasada || isHoje || isPending) && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 flex gap-1 z-20">
-                  {isPending && (
-                    <div className="bg-amber-600 px-3 py-1 rounded-full text-[9px] font-black uppercase text-white flex items-center gap-1 shadow-md">
-                      <Clock size={10} className="animate-spin" /> Local
-                    </div>
-                  )}
-                  {(isAtrasada || isHoje) && (
-                    <div className={`px-4 py-1 rounded-full text-[9px] font-black uppercase text-white shadow-md ${isAtrasada ? 'bg-rose-600 animate-pulse' : 'bg-primary-600'}`}>
-                      {isAtrasada ? 'Saída Atrasada' : 'Saída Hoje'}
-                    </div>
-                  )}
-                </div>
-              )}
-
               <div className="flex flex-col gap-6">
                  <div className="flex-1">
                     <div className="flex flex-col items-start gap-2 mb-4 pr-20">
-                      <select 
-                        value={trip.status} 
-                        onChange={(e) => handleStatusChange(trip, e.target.value as TripStatus)}
-                        className={`text-[9px] font-black uppercase px-3 py-1.5 rounded-full border-none cursor-pointer ${
-                          trip.status === TripStatus.COMPLETED ? 'bg-emerald-100 text-emerald-700' : 
-                          trip.status === TripStatus.IN_PROGRESS ? 'bg-blue-100 text-blue-700' :
-                          trip.status === TripStatus.CANCELLED ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700'
-                        }`}
-                      >
+                      <select value={trip.status} onChange={(e) => handleStatusChange(trip, e.target.value as TripStatus)} className={`text-[9px] font-black uppercase px-3 py-1.5 rounded-full border-none cursor-pointer ${trip.status === TripStatus.COMPLETED ? 'bg-emerald-100 text-emerald-700' : trip.status === TripStatus.IN_PROGRESS ? 'bg-blue-100 text-blue-700' : trip.status === TripStatus.CANCELLED ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700'}`}>
                         {Object.values(TripStatus).map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
                       <span className="text-[10px] md:text-xs font-black text-slate-400 flex items-center gap-1 uppercase">
                         <Calendar size={12} /> {formatDateDisplay(trip.date)}
                       </span>
                     </div>
-
                     <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter mb-4 leading-tight line-clamp-2">
                       {trip.description || `${trip.origin.split(' - ')[0]} ➔ ${trip.destination.split(' - ')[0]}`}
                     </h3>
-                    
                     <div className="space-y-1 mb-4">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-primary-500"></div>
-                        <h4 className="text-sm font-black text-slate-700 truncate uppercase">{trip.origin}</h4>
-                      </div>
-                      <div className="ml-1 w-px h-3 bg-slate-100"></div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-rose-500"></div>
-                        <h4 className="text-sm font-black text-slate-700 truncate uppercase">{trip.destination}</h4>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-2 mb-6">
-                      <Truck size={14} className="text-slate-400" />
-                      <span className="text-[10px] font-black uppercase bg-slate-900 text-white px-3 py-1 rounded-lg">
-                        {vehicle ? `${vehicle.plate} • ${vehicle.model}` : 'Sem veículo'}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-slate-50 p-4 rounded-2xl">
-                        <p className="text-[9px] font-black text-slate-400 uppercase">Distância</p>
-                        <p className="text-lg font-black text-slate-800">{trip.distance_km} KM</p>
-                      </div>
-                      <div className="bg-primary-50 p-4 rounded-2xl">
-                        <p className="text-[9px] font-black text-primary-400 uppercase">Frete</p>
-                        <p className="text-lg font-black text-primary-700">R$ {trip.agreed_price.toLocaleString()}</p>
-                      </div>
+                      <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-primary-500"></div><h4 className="text-sm font-black text-slate-700 truncate uppercase">{trip.origin}</h4></div>
+                      <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-rose-500"></div><h4 className="text-sm font-black text-slate-700 truncate uppercase">{trip.destination}</h4></div>
                     </div>
                  </div>
               </div>
-
               <div className="mt-6 relative">
                 {routeMenuId === trip.id ? (
                   <div className="bg-slate-900 rounded-2xl p-2 flex flex-col gap-1 animate-fade-in shadow-xl">
-                    <button onClick={() => openGoogleMaps(trip.origin, trip.destination, trip.stops || [])} className="flex items-center justify-between w-full p-4 bg-white/5 hover:bg-white/10 rounded-xl text-white font-black text-[10px] uppercase transition-all">
-                      Abrir no Google Maps <MapIcon size={16} className="text-primary-400" />
-                    </button>
-                    <button onClick={() => openWaze(trip.destination)} className="flex items-center justify-between w-full p-4 bg-white/5 hover:bg-white/10 rounded-xl text-white font-black text-[10px] uppercase transition-all">
-                      Abrir no Waze <Smartphone size={16} className="text-blue-400" />
-                    </button>
+                    <button onClick={() => openGoogleMaps(trip.origin, trip.destination, trip.stops || [])} className="flex items-center justify-between w-full p-4 bg-white/5 hover:bg-white/10 rounded-xl text-white font-black text-[10px] uppercase transition-all">Abrir no Google Maps <MapIcon size={16} className="text-primary-400" /></button>
+                    <button onClick={() => openWaze(trip.destination)} className="flex items-center justify-between w-full p-4 bg-white/5 hover:bg-white/10 rounded-xl text-white font-black text-[10px] uppercase transition-all">Abrir no Waze <Smartphone size={16} className="text-blue-400" /></button>
                     <button onClick={() => setRouteMenuId(null)} className="w-full py-2 text-slate-500 font-black text-[8px] uppercase">Cancelar</button>
                   </div>
                 ) : (
-                  <button 
-                     onClick={() => setRouteMenuId(trip.id)} 
-                     className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase flex items-center justify-center gap-2 hover:bg-black transition-all shadow-lg active:scale-95"
-                  >
-                    <Navigation size={14} className="fill-white" /> Iniciar Rota GPS
-                  </button>
+                  <button onClick={() => setRouteMenuId(trip.id)} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase flex items-center justify-center gap-2 hover:bg-black transition-all shadow-lg active:scale-95"><Navigation size={14} className="fill-white" /> Iniciar Rota GPS</button>
                 )}
               </div>
-
               <div className="absolute top-6 right-6 flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                 <button onClick={() => handleEdit(trip)} className="p-3 bg-white shadow-md rounded-full text-slate-400 hover:text-primary-600 transition-colors"><Edit2 size={16}/></button>
                 <button onClick={() => { if(confirm('Excluir?')) onDeleteTrip(trip.id) }} className="p-3 bg-white shadow-md rounded-full text-slate-400 hover:text-rose-500 transition-colors"><Trash2 size={16}/></button>
@@ -355,34 +279,8 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
         })}
       </div>
 
-      {isKmModalOpen && (
-        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md flex items-center justify-center p-6 z-[120] animate-fade-in">
-          <div className="bg-white rounded-[3rem] w-full max-w-md p-10 shadow-2xl animate-slide-up">
-            <div className="flex flex-col items-center text-center mb-8">
-              <div className="p-5 bg-emerald-50 text-emerald-600 rounded-full mb-4">
-                <GaugeCircle size={48} />
-              </div>
-              <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">Atualizar KM</h3>
-              <p className="text-slate-500 font-bold text-sm mt-2">Qual o KM final do veículo?</p>
-            </div>
-            <div className="space-y-6">
-              <input 
-                type="number" 
-                className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-primary-500 rounded-3xl font-black text-3xl text-center outline-none" 
-                value={newVehicleKm || ''} 
-                onChange={e => setNewVehicleKm(Number(e.target.value))} 
-              />
-              <div className="flex gap-3">
-                <button onClick={() => setIsKmModalOpen(false)} className="flex-1 py-5 border-2 rounded-3xl font-black uppercase text-xs text-slate-400">Cancelar</button>
-                <button onClick={confirmKmUpdate} className="flex-1 py-5 bg-emerald-600 text-white rounded-3xl font-black uppercase text-xs shadow-xl">Confirmar</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md flex items-end md:items-center justify-center p-0 md:p-6 z-[100] animate-fade-in" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md flex items-end md:items-center justify-center p-0 md:p-6 z-[100] animate-fade-in">
           <div className="bg-white w-full max-w-2xl rounded-t-[4rem] md:rounded-[3rem] shadow-2xl animate-slide-up relative h-[92vh] md:h-auto overflow-y-auto pb-10">
             <div className="flex justify-between items-center p-6 md:p-10 pb-4">
               <div>
@@ -394,121 +292,57 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
 
             <div className="p-5 md:p-10 space-y-8">
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase text-slate-400 ml-1 flex items-center gap-2">
-                  <NotebookPen size={14}/> Nome da Viagem / Carga
-                </label>
-                <input 
-                  placeholder="Ex: Carga de milho, Peças para SP..." 
-                  className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-primary-500 rounded-2xl font-black text-lg outline-none" 
-                  value={formData.description} 
-                  onChange={e => setFormData({...formData, description: e.target.value})} 
-                />
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-1 flex items-center gap-2"><NotebookPen size={14}/> Nome da Viagem / Carga</label>
+                <input placeholder="Ex: Carga de milho, Peças para SP..." className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-primary-500 rounded-2xl font-black text-lg outline-none" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Data da Viagem</label>
+                  <input type="date" className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-primary-500 rounded-2xl font-bold outline-none" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Veículo</label>
+                  <select className="w-full p-5 bg-slate-50 rounded-2xl border-none font-bold outline-none" value={formData.vehicle_id} onChange={e => setFormData({...formData, vehicle_id: e.target.value})}>
+                    <option value="">Selecione...</option>
+                    {vehicles.map(v => <option key={v.id} value={v.id}>{v.plate} - {v.model}</option>)}
+                  </select>
+                </div>
               </div>
 
               <div className="space-y-4 bg-slate-50 p-6 rounded-[3rem] border border-slate-100">
                 <div className="flex justify-between items-center mb-2 px-1">
                    <h4 className="text-[10px] font-black uppercase text-slate-400">Rota Principal</h4>
                    {origin.city && destination.city && (
-                     <div className="relative">
-                        <button 
-                          onClick={() => setIsPreviewRouteOpen(!isPreviewRouteOpen)}
-                          className="flex items-center gap-2 text-[10px] font-black uppercase text-primary-600 bg-primary-50 px-4 py-2 rounded-xl"
-                        >
-                          <MapPinCheck size={14}/> Ver Rota no Mapa
-                        </button>
-                        {isPreviewRouteOpen && (
-                          <div className="absolute right-0 top-full mt-2 bg-slate-900 rounded-2xl p-2 w-48 shadow-2xl z-50 animate-fade-in border border-white/10">
-                             <button 
-                                onClick={() => openGoogleMaps(`${origin.city} - ${origin.state}`, `${destination.city} - ${destination.state}`, stops)}
-                                className="w-full text-left p-3 hover:bg-white/10 rounded-xl text-white font-black text-[9px] uppercase flex items-center justify-between"
-                             >
-                                Google Maps <MapIcon size={12}/>
-                             </button>
-                             <button 
-                                onClick={() => openWaze(`${destination.city} - ${destination.state}`)}
-                                className="w-full text-left p-3 hover:bg-white/10 rounded-xl text-white font-black text-[9px] uppercase flex items-center justify-between"
-                             >
-                                Waze <Smartphone size={12}/>
-                             </button>
-                          </div>
-                        )}
-                     </div>
+                     <button onClick={() => setIsPreviewRouteOpen(!isPreviewRouteOpen)} className="flex items-center gap-2 text-[10px] font-black uppercase text-primary-600 bg-primary-50 px-4 py-2 rounded-xl"><MapPinCheck size={14}/> Ver Rota no Mapa</button>
                    )}
                 </div>
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Origem</label>
                     <div className="flex gap-2">
                       <input placeholder="Cidade" className="flex-1 p-4 bg-white rounded-2xl border-none font-bold outline-none" value={origin.city} onChange={e => setOrigin({...origin, city: e.target.value})} />
-                      <select className="w-20 p-4 bg-white rounded-2xl border-none font-bold" value={origin.state} onChange={e => setOrigin({...origin, state: e.target.value})}>
-                        {BRAZILIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
+                      <select className="w-20 p-4 bg-white rounded-2xl border-none font-bold" value={origin.state} onChange={e => setOrigin({...origin, state: e.target.value})}>{BRAZILIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}</select>
                     </div>
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Destino</label>
                     <div className="flex gap-2">
                       <input placeholder="Cidade" className="flex-1 p-4 bg-white rounded-2xl border-none font-bold outline-none" value={destination.city} onChange={e => setDestination({...destination, city: e.target.value})} />
-                      <select className="w-20 p-4 bg-white rounded-2xl border-none font-bold" value={destination.state} onChange={e => setDestination({...destination, state: e.target.value})}>
-                        {BRAZILIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
+                      <select className="w-20 p-4 bg-white rounded-2xl border-none font-bold" value={destination.state} onChange={e => setDestination({...destination, state: e.target.value})}>{BRAZILIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}</select>
                     </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-4 border-t border-slate-200">
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1 mb-3 block">Escalas / Paradas Intermediárias</label>
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {stops.map((stop, idx) => (
-                      <div key={idx} className="bg-white px-3 py-2 rounded-xl flex items-center gap-2 border shadow-sm">
-                        <span className="text-[10px] font-bold text-slate-700">{stop.city}-{stop.state}</span>
-                        <button onClick={() => removeStop(idx)} className="text-rose-400"><X size={14}/></button>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
-                    <input placeholder="Cidade escala" className="flex-1 p-4 bg-white rounded-2xl border-none text-sm font-bold" value={newStop.city} onChange={e => setNewStop({...newStop, city: e.target.value})} />
-                    <select className="w-20 p-4 bg-white rounded-2xl border-none font-bold" value={newStop.state} onChange={e => setNewStop({...newStop, state: e.target.value})}>
-                      {BRAZILIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                    <button onClick={addStop} className="p-4 bg-slate-900 text-white rounded-2xl"><Plus size={20}/></button>
                   </div>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Veículo</label>
-                  <select 
-                    className="w-full p-5 bg-slate-50 rounded-2xl border-none font-bold outline-none"
-                    value={formData.vehicle_id}
-                    onChange={e => setFormData({...formData, vehicle_id: e.target.value})}
-                  >
-                    <option value="">Selecione...</option>
-                    {vehicles.map(v => <option key={v.id} value={v.id}>{v.plate} - {v.model}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Distância (KM)</label>
                   <input type="number" className="w-full p-5 bg-slate-50 rounded-2xl font-black text-2xl outline-none" value={formData.distance_km || ''} onChange={e => setFormData({...formData, distance_km: Number(e.target.value)})} />
                 </div>
-              </div>
-
-              <div className="bg-slate-950 p-8 rounded-[3rem] text-white">
-                <div className="flex justify-between items-center mb-6">
-                   <span className="text-[10px] font-black uppercase text-slate-500">Financeiro do Frete</span>
-                   <button onClick={suggestANTTPrice} className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-4 py-2 rounded-xl uppercase">Sugerir Piso ANTT</button>
-                </div>
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-black uppercase text-slate-600">Frete Bruto (R$)</p>
-                    <input type="number" className="w-full p-5 bg-white/5 border border-white/10 rounded-2xl font-black text-2xl text-primary-400 outline-none" value={formData.agreed_price || ''} onChange={e => setFormData({...formData, agreed_price: Number(e.target.value)})} />
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-black uppercase text-slate-600">Comissão (%)</p>
-                    <input type="number" className="w-full p-5 bg-white/5 border border-white/10 rounded-2xl font-black text-2xl text-amber-400 outline-none" value={formData.driver_commission_percentage || ''} onChange={e => setFormData({...formData, driver_commission_percentage: Number(e.target.value)})} />
-                  </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Frete Bruto (R$)</label>
+                  <input type="number" className="w-full p-5 bg-slate-50 rounded-2xl font-black text-2xl text-primary-600 outline-none" value={formData.agreed_price || ''} onChange={e => setFormData({...formData, agreed_price: Number(e.target.value)})} />
                 </div>
               </div>
 
