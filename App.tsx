@@ -70,6 +70,29 @@ const App: React.FC = () => {
   const [jornadaStartTime, setJornadaStartTime] = useState<number | null>(null);
   const [jornadaCurrentTime, setJornadaCurrentTime] = useState(0);
 
+  // Efeito para persistência de sessão (Recuperar login ao dar F5)
+  useEffect(() => {
+    const savedRole = localStorage.getItem('aurilog_role') as 'DRIVER' | 'ADMIN' | null;
+    const savedUser = localStorage.getItem('aurilog_user');
+
+    if (savedRole && savedUser) {
+      try {
+        const parsedUser = JSON.parse(savedUser);
+        
+        // Verifica se a sessão salva condiz com o portal aberto
+        // Se abriu ?mode=driver e a sessão for DRIVER, restaura.
+        // Se abriu portal padrão e a sessão for ADMIN, restaura.
+        if ((isDriverContext && savedRole === 'DRIVER') || (!isDriverContext && savedRole === 'ADMIN')) {
+          setAuthRole(savedRole);
+          setCurrentUser(parsedUser);
+        }
+      } catch (e) {
+        localStorage.removeItem('aurilog_role');
+        localStorage.removeItem('aurilog_user');
+      }
+    }
+  }, [isDriverContext]);
+
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
@@ -171,10 +194,10 @@ const App: React.FC = () => {
     setIsLoggingIn(true);
 
     try {
-      // Tabela baseada no contexto da URL
       const table = isDriverContext ? 'drivers' : 'admins';
+      const role = isDriverContext ? 'DRIVER' : 'ADMIN';
       
-      // Tenta buscar o usuário no banco para obter o ID real
+      // Tenta buscar o usuário no banco
       const { data: dbUser, error } = await supabase.from(table)
         .select('*')
         .eq('email', inputEmail)
@@ -183,10 +206,13 @@ const App: React.FC = () => {
       
       if (error) throw new Error(`Conexão com banco falhou: ${error.message}`);
 
-      // FALLBACK PARA MASTER (Apenas se o banco falhar ou não encontrar o admin padrão)
+      // FALLBACK PARA MASTER (Admin Padrão)
       if (!dbUser && !isDriverContext && inputEmail === 'admin@aurilog.com' && inputPassword === 'admin123') {
-        setCurrentUser({ id: '00000000-0000-0000-0000-000000000000', name: 'Gestor Master', email: 'admin@aurilog.com' });
+        const masterUser = { id: '00000000-0000-0000-0000-000000000000', name: 'Gestor Master', email: 'admin@aurilog.com' };
+        setCurrentUser(masterUser);
         setAuthRole('ADMIN');
+        localStorage.setItem('aurilog_role', 'ADMIN');
+        localStorage.setItem('aurilog_user', JSON.stringify(masterUser));
         return;
       }
 
@@ -195,7 +221,12 @@ const App: React.FC = () => {
       }
       
       setCurrentUser(dbUser);
-      setAuthRole(isDriverContext ? 'DRIVER' : 'ADMIN');
+      setAuthRole(role);
+      
+      // Salva no localStorage para persistência
+      localStorage.setItem('aurilog_role', role);
+      localStorage.setItem('aurilog_user', JSON.stringify(dbUser));
+      
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -207,6 +238,10 @@ const App: React.FC = () => {
     setAuthRole(null);
     setCurrentUser(null);
     setLoginForm({ email: '', password: '' });
+    
+    // Limpa persistência
+    localStorage.removeItem('aurilog_role');
+    localStorage.removeItem('aurilog_user');
   };
 
   const handleOpenDriverAppInNewTab = () => {
