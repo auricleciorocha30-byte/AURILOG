@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { AppView, Trip, Expense, Vehicle, MaintenanceItem, JornadaLog, DbNotification, RoadService, CargoCategory } from './types';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { AppView, Trip, Expense, Vehicle, MaintenanceItem, JornadaLog, DbNotification, RoadService, CargoCategory, TripStatus } from './types';
 import { supabase } from './lib/supabase';
 import { offlineStorage } from './lib/offlineStorage';
 import { Dashboard } from './components/Dashboard';
@@ -61,7 +61,15 @@ const App: React.FC = () => {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [maintenance, setMaintenance] = useState<MaintenanceItem[]>([]);
   const [jornadaLogs, setJornadaLogs] = useState<JornadaLog[]>([]);
+  
+  // Notificações do Banco (Comunicados)
   const [dbNotifications, setDbNotifications] = useState<DbNotification[]>([]);
+  // IDs de notificações dispensadas permanentemente pelo usuário local
+  const [dismissedNotificationIds, setDismissedNotificationIds] = useState<string[]>(() => {
+    const saved = localStorage.getItem('aurilog_dismissed_notifications');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   const [roadServices, setRoadServices] = useState<RoadService[]>([]);
   const [cargoCategories, setCargoCategories] = useState<CargoCategory[]>([]);
   
@@ -175,6 +183,108 @@ const App: React.FC = () => {
 
   useEffect(() => { if (currentUser) fetchData(); }, [fetchData, currentUser]);
 
+  // --- GERAÇÃO DE NOTIFICAÇÕES AUTOMÁTICAS DO SISTEMA ---
+  const systemNotifications = useMemo(() => {
+    const alerts: DbNotification[] = [];
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // 1. Alertas de Viagem (Próximas 48h)
+    trips.forEach(t => {
+      if (t.status === TripStatus.SCHEDULED) {
+        const tripDate = new Date(t.date + 'T00:00:00');
+        if (tripDate >= today && tripDate <= tomorrow) {
+          const isTomorrow = tripDate.getDate() === tomorrow.getDate();
+          alerts.push({
+            id: `sys-trip-${t.id}`,
+            title: isTomorrow ? 'Viagem Amanhã' : 'Viagem Hoje',
+            message: `Preparar para: ${t.origin.split('-')[0]} ➔ ${t.destination.split('-')[0]}`,
+            type: 'INFO',
+            category: 'TRIP',
+            created_at: new Date().toISOString(),
+            sender: 'Sistema AuriLog'
+          });
+        }
+      }
+    });
+
+    // 2. Alertas Financeiros (Vencidos ou Vencendo Hoje)
+    expenses.forEach(e => {
+      if (!e.is_paid && e.due_date) {
+        const dueDate = new Date(e.due_date + 'T12:00:00');
+        dueDate.setHours(0,0,0,0);
+        
+        if (dueDate < today) {
+          alerts.push({
+            id: `sys-exp-late-${e.id}`,
+            title: 'Conta em Atraso',
+            message: `${e.description} venceu em ${new Date(e.due_date).toLocaleDateString()}. Valor: R$ ${e.amount}`,
+            type: 'URGENT',
+            category: 'FINANCE',
+            created_at: new Date().toISOString(),
+            sender: 'Financeiro'
+          });
+        } else if (dueDate.getTime() === today.getTime()) {
+           alerts.push({
+            id: `sys-exp-today-${e.id}`,
+            title: 'Vence Hoje',
+            message: `Pagamento pendente: ${e.description}. Valor: R$ ${e.amount}`,
+            type: 'WARNING',
+            category: 'FINANCE',
+            created_at: new Date().toISOString(),
+            sender: 'Financeiro'
+          });
+        }
+      }
+    });
+
+    // 3. Alertas de Manutenção (Preventiva)
+    maintenance.forEach(m => {
+       const vehicle = vehicles.find(v => v.id === m.vehicle_id);
+       if (vehicle) {
+          const limitKm = (m.km_at_purchase || 0) + (m.warranty_km || 0);
+          const kmLeft = limitKm - vehicle.current_km;
+          
+          if (m.warranty_km > 0 && kmLeft <= 1000 && kmLeft > 0) {
+             alerts.push({
+                id: `sys-maint-${m.id}`,
+                title: 'Manutenção Próxima',
+                message: `${m.part_name} no veículo ${vehicle.plate} vence em ${kmLeft} KM.`,
+                type: 'WARNING',
+                category: 'MAINTENANCE',
+                created_at: new Date().toISOString(),
+                sender: 'Oficina'
+             });
+          } else if (m.warranty_km > 0 && kmLeft <= 0) {
+             alerts.push({
+                id: `sys-maint-over-${m.id}`,
+                title: 'Manutenção Vencida',
+                message: `${m.part_name} no veículo ${vehicle.plate} excedeu o KM limite.`,
+                type: 'URGENT',
+                category: 'MAINTENANCE',
+                created_at: new Date().toISOString(),
+                sender: 'Oficina'
+             });
+          }
+       }
+    });
+
+    return alerts;
+  }, [trips, expenses, maintenance, vehicles]);
+
+  // Combina notificações do banco (filtrando as excluídas) com as do sistema
+  const activeNotifications = useMemo(() => {
+    const visibleDbNotifications = dbNotifications.filter(n => !dismissedNotificationIds.includes(n.id));
+    // Notificações de sistema aparecem primeiro se forem urgentes
+    return [...systemNotifications, ...visibleDbNotifications].sort((a, b) => {
+       if (a.type === 'URGENT' && b.type !== 'URGENT') return -1;
+       if (b.type === 'URGENT' && a.type !== 'URGENT') return 1;
+       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+  }, [dbNotifications, systemNotifications, dismissedNotificationIds]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const inputEmail = loginForm.email.toLowerCase().trim();
@@ -208,7 +318,19 @@ const App: React.FC = () => {
   };
 
   const handleDismissNotification = async (id: string) => {
-    setDbNotifications(prev => prev.filter(n => n.id !== id));
+    // Se for notificação de sistema, não salvamos no banco/storage pois ela recria se a condição persistir
+    if (id.startsWith('sys-')) {
+      // Apenas forçamos um re-render removendo visualmente (na proxima verificação ela volta se o problema nao for resolvido)
+      // Mas para UX imediata, podemos ignorar ou implementar um "snooze".
+      // Aqui vamos apenas ignorar para sistema (elas somem resolvendo a pendencia) 
+      // ou podemos adicionar a uma lista temporária de sessão.
+      return; 
+    }
+
+    // Para notificações do banco (Comunicados), salvamos o ID para nunca mais mostrar
+    const newDismissed = [...dismissedNotificationIds, id];
+    setDismissedNotificationIds(newDismissed);
+    localStorage.setItem('aurilog_dismissed_notifications', JSON.stringify(newDismissed));
   };
 
   if (!authRole) {
@@ -287,7 +409,7 @@ const App: React.FC = () => {
           </div>
           <button onClick={() => setShowNotifications(true)} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase text-slate-500 hover:bg-slate-100 transition-all relative">
             <Bell size={20} /> Notificações
-            {dbNotifications.length > 0 && <span className="absolute top-4 left-10 w-2 h-2 bg-rose-500 rounded-full"></span>}
+            {activeNotifications.length > 0 && <span className="absolute top-4 left-10 w-2 h-2 bg-rose-500 rounded-full"></span>}
           </button>
           <button onClick={handleLogout} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase text-rose-500 hover:bg-rose-50 transition-all"><LogOut size={20} /> Sair</button>
         </div>
@@ -307,7 +429,7 @@ const App: React.FC = () => {
             </div>
             <button onClick={() => setShowNotifications(true)} className="p-3 bg-slate-50 rounded-xl text-slate-500 relative">
               <Bell size={24}/>
-              {dbNotifications.length > 0 && <span className="absolute top-3 right-3 w-2 h-2 bg-rose-500 rounded-full border-2 border-white"></span>}
+              {activeNotifications.length > 0 && <span className="absolute top-3 right-3 w-2 h-2 bg-rose-500 rounded-full border-2 border-white"></span>}
             </button>
           </div>
         </div>
@@ -326,7 +448,7 @@ const App: React.FC = () => {
 
       {showNotifications && (
         <NotificationCenter 
-          notifications={dbNotifications} 
+          notifications={activeNotifications} 
           onClose={() => setShowNotifications(false)} 
           onAction={(category) => {
             const viewMap: Record<string, AppView> = {
