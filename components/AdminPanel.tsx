@@ -59,11 +59,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, onU
   });
 
   useEffect(() => {
-    fetchDrivers();
-    fetchServices();
-    fetchCategories();
-    fetchNotifications();
-    fetchLocations();
+    loadAllAdminData();
 
     const locationChannel = supabase
       .channel('admin-tracking-updates')
@@ -86,6 +82,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, onU
       supabase.removeChannel(locationChannel); 
     };
   }, []);
+
+  const loadAllAdminData = async () => {
+    setLoading(true);
+    await Promise.all([
+      fetchDrivers(),
+      fetchServices(),
+      fetchCategories(),
+      fetchNotifications(),
+      fetchLocations()
+    ]);
+    setLoading(false);
+  };
 
   const fetchDrivers = async () => {
     const { data } = await supabase.from('drivers').select('*').order('name', { ascending: true });
@@ -138,10 +146,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, onU
     setExplorerDriver(driver);
     setExplorerData(null);
     try {
-      // Puxamos os dados cruzando pelo e-mail do motorista que é a chave do rastreamento
       const { data: locData } = await supabase.from('user_locations').select('user_id').eq('email', driver.email).maybeSingle();
-      
-      const userId = locData?.user_id || driver.id; // Fallback se não tiver logado ainda
+      const userId = locData?.user_id || driver.id;
 
       const [tripsRes, expRes, vehRes, maintRes] = await Promise.all([
         supabase.from('trips').select('*').eq('user_id', userId).order('date', { ascending: false }),
@@ -205,17 +211,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, onU
   };
 
   const handleDeleteNotification = async (id: string) => {
+    if (!confirm("Excluir alerta?")) return;
     const { error } = await supabase.from('notifications').delete().eq('id', id);
     if (!error) fetchNotifications();
   };
 
-  const handleAddCategory = () => {
-    if (!newCategory.trim()) return;
-    if (categories.includes(newCategory.trim())) {
+  const handleAddCategory = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const cat = newCategory.trim();
+    if (!cat) return;
+    
+    // Verifica duplicatas de forma insensível a maiúsculas/minúsculas
+    if (categories.some(c => c.toLowerCase() === cat.toLowerCase())) {
       setNewCategory('');
       return;
     }
-    setCategories(prev => [...prev, newCategory.trim()]);
+    
+    setCategories(prev => [...prev, cat]);
     setNewCategory('');
   };
 
@@ -268,18 +280,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, onU
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button onClick={onUnlockDriverApp} className="flex items-center gap-3 px-8 py-5 bg-emerald-600 text-white rounded-2xl font-black text-[11px] uppercase shadow-xl transition-all active:scale-95"><Smartphone size={18} /> Abrir Portal Condutor</button>
-          <button onClick={onLogout} className="flex items-center gap-3 px-8 py-5 bg-white border-2 border-slate-100 text-rose-500 rounded-2xl font-black text-[11px] uppercase hover:bg-rose-50 transition-all"><LogOut size={18} /> Sair</button>
+          <button type="button" onClick={onUnlockDriverApp} className="flex items-center gap-3 px-8 py-5 bg-emerald-600 text-white rounded-2xl font-black text-[11px] uppercase shadow-xl transition-all active:scale-95"><Smartphone size={18} /> Abrir Portal Condutor</button>
+          <button type="button" onClick={onLogout} className="flex items-center gap-3 px-8 py-5 bg-white border-2 border-slate-100 text-rose-500 rounded-2xl font-black text-[11px] uppercase hover:bg-rose-50 transition-all"><LogOut size={18} /> Sair</button>
         </div>
       </div>
 
       <div className="flex flex-wrap bg-slate-200 p-1 rounded-2xl md:rounded-[2rem] gap-1 w-full md:max-w-5xl mx-auto overflow-x-auto no-scrollbar">
-        <button onClick={() => setActiveTab('LOCATIONS')} className={`flex-1 min-w-[100px] px-3 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-[8px] md:text-[10px] uppercase tracking-widest transition-all ${activeTab === 'LOCATIONS' ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-700'}`}>Localizar</button>
-        <button onClick={() => setActiveTab('DRIVERS')} className={`flex-1 min-w-[100px] px-3 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-[8px] md:text-[10px] uppercase tracking-widest transition-all ${activeTab === 'DRIVERS' ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-700'}`}>Motoristas</button>
-        <button onClick={() => setActiveTab('EXPLORER')} className={`flex-1 min-w-[100px] px-3 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-[8px] md:text-[10px] uppercase tracking-widest transition-all ${activeTab === 'EXPLORER' ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-700'}`}>Explorar</button>
-        <button onClick={() => setActiveTab('ALERTS')} className={`flex-1 min-w-[100px] px-3 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-[8px] md:text-[10px] uppercase tracking-widest transition-all ${activeTab === 'ALERTS' ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-700'}`}>Alertas</button>
-        <button onClick={() => setActiveTab('SERVICES')} className={`flex-1 min-w-[100px] px-3 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-[8px] md:text-[10px] uppercase tracking-widest transition-all ${activeTab === 'SERVICES' ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-700'}`}>Radar</button>
-        <button onClick={() => setActiveTab('CATEGORIES')} className={`flex-1 min-w-[100px] px-3 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-[8px] md:text-[10px] uppercase tracking-widest transition-all ${activeTab === 'CATEGORIES' ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-700'}`}>Filtros</button>
+        {(['LOCATIONS', 'DRIVERS', 'EXPLORER', 'ALERTS', 'SERVICES', 'CATEGORIES'] as const).map(tab => (
+          <button 
+            key={tab}
+            type="button"
+            onClick={() => setActiveTab(tab)} 
+            className={`flex-1 min-w-[100px] px-3 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-[8px] md:text-[10px] uppercase tracking-widest transition-all ${activeTab === tab ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            {tab === 'LOCATIONS' ? 'Localizar' : tab === 'DRIVERS' ? 'Motoristas' : tab === 'EXPLORER' ? 'Explorar' : tab === 'ALERTS' ? 'Alertas' : tab === 'SERVICES' ? 'Radar' : 'Filtros'}
+          </button>
+        ))}
       </div>
 
       <div className="grid grid-cols-1 gap-6">
@@ -288,7 +304,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, onU
              <div className="lg:col-span-4 bg-white p-6 rounded-[2.5rem] border shadow-sm flex flex-col h-[700px]">
                 <div className="flex justify-between items-center mb-6">
                   <h3 className="text-sm font-black uppercase tracking-tight text-slate-900">RADAR GPS DA FROTA</h3>
-                  <button onClick={() => { fetchLocations(); fetchDrivers(); }} className="p-2 bg-slate-50 text-slate-400 hover:text-primary-600 rounded-full transition-all"><RefreshCcw size={16} /></button>
+                  <button type="button" onClick={loadAllAdminData} className="p-2 bg-slate-50 text-slate-400 hover:text-primary-600 rounded-full transition-all"><RefreshCcw size={16} /></button>
                 </div>
                 <div className="relative mb-6">
                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
@@ -361,9 +377,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, onU
                               <p className="text-[10px] text-slate-400 font-bold">{d.email}</p>
                            </div>
                         </div>
-                        <button onClick={() => handleDeleteDriver(d.id)} className="p-3 text-slate-200 hover:text-rose-500 transition-all opacity-0 group-hover:opacity-100"><Trash2 size={20}/></button>
+                        <button type="button" onClick={() => handleDeleteDriver(d.id)} className="p-3 text-slate-200 hover:text-rose-500 transition-all opacity-0 group-hover:opacity-100"><Trash2 size={20}/></button>
                      </div>
                    ))}
+                   {drivers.length === 0 && <p className="text-center py-10 text-slate-300 font-bold uppercase text-xs">Nenhum motorista cadastrado.</p>}
                 </div>
              </div>
           </div>
@@ -375,10 +392,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, onU
                 <h3 className="text-xl font-black mb-6 uppercase tracking-tight flex items-center gap-3"><Search size={24} className="text-primary-600"/> Auditoria de Dados por Condutor</h3>
                 <div className="flex flex-wrap gap-3">
                    {drivers.map(d => (
-                     <button key={d.id} onClick={() => fetchExplorerData(d)} className={`px-6 py-4 rounded-2xl font-black text-[10px] uppercase transition-all flex items-center gap-2 ${explorerDriver?.id === d.id ? 'bg-primary-600 text-white shadow-xl' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>
+                     <button key={d.id} type="button" onClick={() => fetchExplorerData(d)} className={`px-6 py-4 rounded-2xl font-black text-[10px] uppercase transition-all flex items-center gap-2 ${explorerDriver?.id === d.id ? 'bg-primary-600 text-white shadow-xl' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>
                         {explorerDriver?.id === d.id ? <CheckCircle2 size={16}/> : <User size={16}/>} {d.name}
                      </button>
                    ))}
+                   {drivers.length === 0 && <p className="text-slate-300 font-bold uppercase text-xs">Cadastre motoristas primeiro.</p>}
                 </div>
              </div>
 
@@ -395,16 +413,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, onU
                   </div>
                   <div className="bg-emerald-600 p-8 rounded-[2.5rem] text-white shadow-xl">
                      <p className="text-[10px] font-black uppercase opacity-60">Faturamento Bruto</p>
-                     <p className="text-4xl font-black mt-2">R$ {explorerData.trips.reduce((acc, t) => acc + Number(t.agreed_price), 0).toLocaleString()}</p>
+                     <p className="text-4xl font-black mt-2">R$ {explorerData.trips.reduce((acc, t) => acc + (Number(t.agreed_price) || 0), 0).toLocaleString()}</p>
                   </div>
                   <div className="bg-rose-600 p-8 rounded-[2.5rem] text-white shadow-xl">
                      <p className="text-[10px] font-black uppercase opacity-60">Despesas Totais</p>
-                     <p className="text-4xl font-black mt-2">R$ {explorerData.expenses.reduce((acc, e) => acc + Number(e.amount), 0).toLocaleString()}</p>
+                     <p className="text-4xl font-black mt-2">R$ {explorerData.expenses.reduce((acc, e) => acc + (Number(e.amount) || 0), 0).toLocaleString()}</p>
                   </div>
-                  <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-xl">
+                  <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-xl overflow-hidden">
                      <p className="text-[10px] font-black uppercase opacity-60">Frota Associada</p>
-                     <div className="mt-4 space-y-2">
+                     <div className="mt-4 space-y-2 max-h-[150px] overflow-y-auto no-scrollbar">
                         {explorerData.vehicles.map(v => <div key={v.id} className="bg-white/10 p-2 rounded-lg flex items-center gap-2 text-xs font-black uppercase tracking-widest"><Truck size={12}/> {v.plate}</div>)}
+                        {explorerData.vehicles.length === 0 && <p className="text-white/30 text-[10px] font-bold">Nenhum veículo.</p>}
                      </div>
                   </div>
                </div>
@@ -453,7 +472,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, onU
                               <span className="text-[7px] font-black bg-primary-50 text-primary-400 px-2 py-0.5 rounded-md uppercase">PARA: {n.target_user_email || 'GERAL'}</span>
                            </div>
                         </div>
-                        <button onClick={() => handleDeleteNotification(n.id)} className="p-3 text-slate-200 hover:text-rose-500 transition-all opacity-0 group-hover:opacity-100"><Trash2 size={20}/></button>
+                        <button type="button" onClick={() => handleDeleteNotification(n.id)} className="p-3 text-slate-200 hover:text-rose-500 transition-all opacity-0 group-hover:opacity-100"><Trash2 size={20}/></button>
                      </div>
                    ))}
                 </div>
@@ -494,14 +513,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, onU
                            <div className="flex justify-between items-start">
                               <span className="text-[8px] font-black px-2 py-1 bg-white rounded-lg text-primary-600 uppercase border border-slate-100">{s.type}</span>
                               <div className="flex gap-1">
-                                 <button onClick={() => { setEditingServiceId(s.id); setServiceForm({...s}); }} className="p-2 text-slate-400 hover:text-primary-600"><Edit2 size={16}/></button>
-                                 <button onClick={() => handleDeleteService(s.id)} className="p-2 text-slate-400 hover:text-rose-500"><Trash2 size={16}/></button>
+                                 <button type="button" onClick={() => { setEditingServiceId(s.id); setServiceForm({...s}); }} className="p-2 text-slate-400 hover:text-primary-600"><Edit2 size={16}/></button>
+                                 <button type="button" onClick={() => handleDeleteService(s.id)} className="p-2 text-slate-400 hover:text-rose-500"><Trash2 size={16}/></button>
                               </div>
                            </div>
                            <h4 className="font-black text-slate-900 mt-3">{s.name}</h4>
                            <p className="text-[10px] text-slate-400 font-bold mt-1 line-clamp-1">{s.address}</p>
                         </div>
-                        <button onClick={() => window.open(s.location_url, '_blank')} className="mt-4 w-full py-2 bg-white rounded-xl text-[9px] font-black uppercase text-slate-500 hover:text-primary-600 transition-colors flex items-center justify-center gap-2 border border-slate-100"><ExternalLink size={12}/> Ver no Mapa</button>
+                        <button type="button" onClick={() => window.open(s.location_url, '_blank')} className="mt-4 w-full py-2 bg-white rounded-xl text-[9px] font-black uppercase text-slate-500 hover:text-primary-600 transition-colors flex items-center justify-center gap-2 border border-slate-100"><ExternalLink size={12}/> Ver no Mapa</button>
                      </div>
                    ))}
                 </div>
@@ -512,17 +531,36 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, onU
         {activeTab === 'CATEGORIES' && (
            <div className="max-w-2xl mx-auto w-full bg-white p-8 md:p-12 rounded-[3.5rem] border shadow-sm animate-fade-in">
               <h3 className="text-2xl font-black mb-8 flex items-center gap-3 uppercase tracking-tight"><Tag className="text-primary-600" size={28}/> Categorias do Radar</h3>
-              <div className="flex gap-4 mb-8">
-                 <input placeholder="Nova categoria..." className="flex-1 p-5 bg-slate-50 rounded-3xl font-bold outline-none" value={newCategory} onChange={e => setNewCategory(e.target.value)} />
-                 <button onClick={handleAddCategory} className="bg-primary-600 text-white px-8 rounded-3xl font-black uppercase text-xs"><Plus/></button>
-              </div>
+              
+              <form onSubmit={handleAddCategory} className="flex gap-4 mb-8">
+                 <input 
+                    placeholder="Nova categoria..." 
+                    className="flex-1 p-5 bg-slate-50 rounded-3xl font-bold outline-none border-2 border-transparent focus:border-primary-500 transition-all" 
+                    value={newCategory} 
+                    onChange={e => setNewCategory(e.target.value)} 
+                 />
+                 <button 
+                    type="submit" 
+                    className="bg-primary-600 text-white px-8 rounded-3xl font-black uppercase text-xs hover:bg-primary-700 active:scale-95 transition-all shadow-lg"
+                 >
+                    <Plus size={24} />
+                 </button>
+              </form>
+
               <div className="flex flex-wrap gap-2">
                  {categories.map(c => (
-                   <div key={c} className="px-5 py-3 bg-slate-50 rounded-2xl border border-slate-100 text-sm font-bold text-slate-600 flex items-center gap-3">
+                   <div key={c} className="px-5 py-3 bg-slate-50 rounded-2xl border border-slate-100 text-sm font-bold text-slate-600 flex items-center gap-3 group hover:border-rose-200 transition-colors">
                       {c}
-                      <button onClick={() => setCategories(prev => prev.filter(cat => cat !== c))} className="text-slate-300 hover:text-rose-500"><X size={14}/></button>
+                      <button 
+                        type="button" 
+                        onClick={() => setCategories(prev => prev.filter(cat => cat !== c))} 
+                        className="text-slate-300 hover:text-rose-500 transition-all"
+                      >
+                        <X size={14}/>
+                      </button>
                    </div>
                  ))}
+                 {categories.length === 0 && <p className="text-slate-300 font-bold uppercase text-xs w-full text-center py-4">Nenhuma categoria ativa.</p>}
               </div>
            </div>
         )}
