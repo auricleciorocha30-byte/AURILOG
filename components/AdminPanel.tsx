@@ -15,7 +15,6 @@ import {
   ReceiptText,
   UserPlus,
   Trash2,
-  Edit2,
   RefreshCcw,
   Radar,
   ExternalLink,
@@ -23,7 +22,15 @@ import {
   CheckCircle2,
   Send,
   Lock,
-  ArrowRight
+  ArrowRight,
+  Settings,
+  MapPinned,
+  Store,
+  Fuel,
+  Utensils,
+  Wrench,
+  Download,
+  Filter
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { RoadService, DbNotification, UserLocation, Trip, Expense, Vehicle, MaintenanceItem, Driver, TripStatus } from '../types';
@@ -34,7 +41,7 @@ interface AdminPanelProps {
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) => {
-  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'DRIVERS' | 'FLEET' | 'ALERTS'>('OVERVIEW');
+  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'DRIVERS' | 'FLEET' | 'PARTNERS' | 'TRACKING' | 'ALERTS' | 'CONFIG'>('OVERVIEW');
   const [loading, setLoading] = useState(false);
   
   // Dados Consolidados
@@ -43,22 +50,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
   const [allVehicles, setAllVehicles] = useState<Vehicle[]>([]);
   const [allMaintenance, setAllMaintenance] = useState<MaintenanceItem[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [roadServices, setRoadServices] = useState<RoadService[]>([]);
+  const [locations, setLocations] = useState<UserLocation[]>([]);
   
   // Forms
   const [driverForm, setDriverForm] = useState({ name: '', email: '', password: '' });
   const [alertForm, setAlertForm] = useState({ title: '', message: '', target_user_email: '' });
+  const [partnerForm, setPartnerForm] = useState({ name: '', type: 'Posto de Combustível', address: '', location_url: '', phone: '', description: '' });
 
   useEffect(() => { loadAllAdminData(); }, []);
 
   const loadAllAdminData = async () => {
     setLoading(true);
     try {
-      const [tripsRes, expensesRes, vehiclesRes, maintenanceRes, driversRes] = await Promise.all([
+      const [tripsRes, expensesRes, vehiclesRes, maintenanceRes, driversRes, servicesRes, locRes] = await Promise.all([
         supabase.from('trips').select('*'),
         supabase.from('expenses').select('*'),
         supabase.from('vehicles').select('*'),
         supabase.from('maintenance').select('*'),
-        supabase.from('drivers').select('*')
+        supabase.from('drivers').select('*'),
+        supabase.from('road_services').select('*'),
+        supabase.from('user_locations').select('*')
       ]);
 
       if (tripsRes.data) setAllTrips(tripsRes.data);
@@ -66,255 +78,271 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
       if (vehiclesRes.data) setAllVehicles(vehiclesRes.data);
       if (maintenanceRes.data) setAllMaintenance(maintenanceRes.data);
       if (driversRes.data) setDrivers(driversRes.data);
+      if (servicesRes.data) setRoadServices(servicesRes.data);
+      if (locRes.data) setLocations(locRes.data);
     } catch (err) { console.error("Erro ao carregar dados admin"); } finally { setLoading(false); }
   };
 
   const totals = useMemo(() => {
     const revenue = allTrips.filter(t => t.status === TripStatus.COMPLETED).reduce((acc, t) => acc + (Number(t.agreed_price) || 0), 0);
-    const tripExpenses = allExpenses.filter(e => e.trip_id).reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
-    const fixedExpenses = allExpenses.filter(e => !e.trip_id).reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
-    const maintCost = allMaintenance.reduce((acc, m) => acc + (Number(m.cost) || 0), 0);
+    const tripExp = allExpenses.filter(e => e.trip_id).reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
+    const fixedExp = allExpenses.filter(e => !e.trip_id).reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
     const commissions = allTrips.filter(t => t.status === TripStatus.COMPLETED).reduce((acc, t) => acc + (Number(t.driver_commission) || 0), 0);
     
-    const expenseTotal = tripExpenses + fixedExpenses + maintCost;
-    const profit = revenue - expenseTotal - commissions;
-    
-    return { revenue, expense: expenseTotal, profit, activeTrips: allTrips.filter(t => t.status === TripStatus.IN_PROGRESS).length, fleetCount: allVehicles.length };
-  }, [allTrips, allExpenses, allVehicles, allMaintenance]);
+    const profit = revenue - tripExp - fixedExp - commissions;
+    return { revenue, expense: tripExp + fixedExp, profit, fleet: allVehicles.length, drivers: drivers.length };
+  }, [allTrips, allExpenses, allVehicles, drivers]);
 
-  const handleAddDriver = async (e: React.FormEvent) => {
+  const handleAddPartner = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const { error } = await supabase.from('drivers').insert([{
-        name: driverForm.name,
-        email: driverForm.email.toLowerCase().trim(),
-        password: driverForm.password,
-        status: 'Ativo'
-      }]);
+      const { error } = await supabase.from('road_services').insert([partnerForm]);
       if (error) throw error;
-      setDriverForm({ name: '', email: '', password: '' });
+      setPartnerForm({ name: '', type: 'Posto de Combustível', address: '', location_url: '', phone: '', description: '' });
       loadAllAdminData();
-      alert("Motorista cadastrado com sucesso!");
+      alert("Parceiro adicionado!");
     } catch (err: any) { alert(err.message); } finally { setLoading(false); }
   };
 
-  const handleDeleteDriver = async (id: string) => {
-    if (!confirm("Excluir este motorista permanentemente?")) return;
+  const deleteRecord = async (table: string, id: string) => {
+    if (!confirm("Confirmar exclusão?")) return;
     setLoading(true);
-    try {
-      const { error } = await supabase.from('drivers').delete().eq('id', id);
-      if (error) throw error;
-      loadAllAdminData();
-    } catch (err: any) { alert(err.message); } finally { setLoading(false); }
+    await supabase.from(table).delete().eq('id', id);
+    loadAllAdminData();
   };
 
-  const handleSendAlert = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const { error } = await supabase.from('notifications').insert([{
-        title: alertForm.title,
-        message: alertForm.message,
-        type: 'INFO',
-        category: 'GENERAL',
-        target_user_email: alertForm.target_user_email === '' ? null : alertForm.target_user_email,
-        created_at: new Date().toISOString()
-      }]);
-      if (error) throw error;
-      setAlertForm({ title: '', message: '', target_user_email: '' });
-      alert("Comunicado enviado!");
-    } catch (err: any) { alert(err.message); } finally { setLoading(false); }
-  };
-
-  const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
-
-  const openDriverPortal = () => {
-    const driverUrl = window.location.origin + '?mode=driver';
-    window.open(driverUrl, '_blank');
+  const exportData = () => {
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + "Data,Origem,Destino,Valor,Motorista\n"
+      + allTrips.map(t => `${t.date},${t.origin},${t.destination},${t.agreed_price},${t.user_id}`).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "relatorio_aurilog.csv");
+    document.body.appendChild(link);
+    link.click();
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white font-['Plus_Jakarta_Sans']">
-      <header className="border-b border-white/5 bg-slate-950/50 backdrop-blur-xl sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-6 flex flex-col md:flex-row justify-between items-center gap-4">
+    <div className="min-h-screen bg-slate-950 text-white font-['Plus_Jakarta_Sans'] overflow-x-hidden">
+      <header className="border-b border-white/5 bg-slate-950/80 backdrop-blur-xl sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-6 py-5 flex justify-between items-center">
           <div className="flex items-center gap-4">
             <div className="p-3 bg-amber-500 rounded-2xl shadow-xl shadow-amber-500/20">
-              <ShieldCheck size={28} />
+              <ShieldCheck size={28} className="text-slate-950" />
             </div>
-            <div>
-              <h1 className="text-2xl font-black tracking-tighter uppercase">Painel de Gestão Master</h1>
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Controle Consolidado AuriLog</p>
-            </div>
+            <h1 className="text-2xl font-black tracking-tighter uppercase hidden md:block">AURI<span className="text-amber-500">LOG</span> GESTOR</h1>
           </div>
-          <div className="flex items-center gap-3">
-            <button onClick={openDriverPortal} className="px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2">
-              <Smartphone size={16}/> Abrir Portal Motorista <ExternalLink size={14}/>
-            </button>
-            <button onClick={onLogout} className="p-3 bg-rose-500/10 text-rose-500 border border-rose-500/20 rounded-2xl hover:bg-rose-500 hover:text-white transition-all"><LogOut size={20}/></button>
+          <div className="flex gap-3">
+             <button onClick={() => window.open(window.location.origin + '?mode=driver', '_blank')} className="px-6 py-3 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                <Smartphone size={16}/> Portal Motorista <ExternalLink size={14}/>
+             </button>
+             <button onClick={onLogout} className="p-3 bg-rose-500/10 text-rose-500 border border-rose-500/20 rounded-2xl hover:bg-rose-500 hover:text-white transition-all"><LogOut size={20}/></button>
           </div>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto p-6 space-y-8 pb-32">
-        <div className="flex overflow-x-auto no-scrollbar gap-2 bg-white/5 p-1.5 rounded-[2.5rem] md:max-w-2xl">
-          <button onClick={() => setActiveTab('OVERVIEW')} className={`flex-1 py-4 px-6 rounded-[2rem] text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all ${activeTab === 'OVERVIEW' ? 'bg-amber-500 text-slate-950 shadow-xl' : 'text-slate-500 hover:text-white'}`}>Visão Geral</button>
-          <button onClick={() => setActiveTab('DRIVERS')} className={`flex-1 py-4 px-6 rounded-[2rem] text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all ${activeTab === 'DRIVERS' ? 'bg-amber-500 text-slate-950 shadow-xl' : 'text-slate-500 hover:text-white'}`}>Equipe</button>
-          <button onClick={() => setActiveTab('FLEET')} className={`flex-1 py-4 px-6 rounded-[2rem] text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all ${activeTab === 'FLEET' ? 'bg-amber-500 text-slate-950 shadow-xl' : 'text-slate-500 hover:text-white'}`}>Frota</button>
-          <button onClick={() => setActiveTab('ALERTS')} className={`flex-1 py-4 px-6 rounded-[2rem] text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all ${activeTab === 'ALERTS' ? 'bg-amber-500 text-slate-950 shadow-xl' : 'text-slate-500 hover:text-white'}`}>Comunicados</button>
+        {/* Menu de Navegação Horizontal */}
+        <div className="flex overflow-x-auto no-scrollbar gap-2 bg-white/5 p-1.5 rounded-[2.5rem]">
+          {[
+            { id: 'OVERVIEW', label: 'Dashboard', icon: TrendingUp },
+            { id: 'TRACKING', label: 'Rastreamento', icon: MapPinned },
+            { id: 'DRIVERS', label: 'Equipe', icon: Users },
+            { id: 'FLEET', label: 'Frota', icon: Truck },
+            { id: 'PARTNERS', label: 'Parceiros', icon: Store },
+            { id: 'ALERTS', label: 'Alertas', icon: Bell },
+            { id: 'CONFIG', label: 'Configurações', icon: Settings },
+          ].map(tab => (
+            <button 
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`flex-1 py-4 px-6 rounded-[2rem] text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all flex items-center justify-center gap-2 ${activeTab === tab.id ? 'bg-amber-500 text-slate-950 shadow-xl' : 'text-slate-500 hover:text-white'}`}
+            >
+              <tab.icon size={16}/> {tab.label}
+            </button>
+          ))}
         </div>
 
         {activeTab === 'OVERVIEW' && (
           <div className="space-y-8 animate-fade-in">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="bg-slate-900 border border-white/5 p-8 rounded-[3rem]">
-                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Receita Bruta (Conc.)</p>
-                <p className="text-3xl font-black text-white mt-2">{formatCurrency(totals.revenue)}</p>
-                <div className="flex items-center gap-2 mt-4 text-emerald-400 text-[10px] font-black uppercase"><TrendingUp size={14}/> Viagens Concluídas</div>
-              </div>
-              <div className="bg-slate-900 border border-white/5 p-8 rounded-[3rem]">
-                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Gasto Operacional Global</p>
-                <p className="text-3xl font-black text-rose-400 mt-2">{formatCurrency(totals.expense)}</p>
-                <div className="mt-4 flex gap-2"><div className="w-1 h-1 bg-rose-500 rounded-full"></div><div className="w-1 h-1 bg-rose-500 rounded-full opacity-50"></div><div className="w-1 h-1 bg-rose-500 rounded-full opacity-20"></div></div>
-              </div>
-              <div className="bg-slate-900 border border-amber-500/20 p-8 rounded-[3rem] shadow-2xl shadow-amber-500/5">
-                <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Lucro Real Líquido</p>
-                <p className="text-3xl font-black text-white mt-2">{formatCurrency(totals.profit)}</p>
-                <div className="mt-4 text-[10px] font-black text-amber-500/50 uppercase">Após comissões e despesas</div>
-              </div>
-              <div className="bg-slate-900 border border-white/5 p-8 rounded-[3rem]">
-                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Atividade da Rede</p>
-                <p className="text-3xl font-black text-white mt-2">{totals.activeTrips} Viagens</p>
-                <p className="text-[10px] font-black text-emerald-400 mt-4 uppercase">Em andamento agora</p>
-              </div>
-            </div>
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="bg-slate-900 p-8 rounded-[3rem] border border-white/5">
+                   <p className="text-[10px] font-black text-slate-500 uppercase">Receita Bruta</p>
+                   <p className="text-3xl font-black mt-2">R$ {totals.revenue.toLocaleString()}</p>
+                </div>
+                <div className="bg-slate-900 p-8 rounded-[3rem] border border-white/5">
+                   <p className="text-[10px] font-black text-slate-500 uppercase">Gasto Total</p>
+                   <p className="text-3xl font-black mt-2 text-rose-400">R$ {totals.expense.toLocaleString()}</p>
+                </div>
+                <div className="bg-slate-900 p-8 rounded-[3rem] border border-amber-500/20 shadow-2xl shadow-amber-500/5">
+                   <p className="text-[10px] font-black text-amber-500 uppercase">Lucro Líquido</p>
+                   <p className="text-3xl font-black mt-2">R$ {totals.profit.toLocaleString()}</p>
+                </div>
+                <div className="bg-slate-900 p-8 rounded-[3rem] border border-white/5">
+                   <p className="text-[10px] font-black text-slate-500 uppercase">Ativos</p>
+                   <p className="text-3xl font-black mt-2">{totals.drivers} Condutores</p>
+                </div>
+             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              <div className="lg:col-span-2 bg-white/5 border border-white/10 p-10 rounded-[4rem]">
-                <div className="flex justify-between items-center mb-8">
-                   <h3 className="text-xl font-black uppercase tracking-tight flex items-center gap-3"><Truck className="text-amber-500" size={24}/> Últimas Operações</h3>
-                   <button onClick={loadAllAdminData} className="p-3 bg-white/5 rounded-2xl hover:bg-white/10 transition-all text-slate-400"><RefreshCcw size={18}/></button>
+             <div className="bg-white/5 p-10 rounded-[4rem] border border-white/10">
+                <div className="flex justify-between items-center mb-10">
+                   <h3 className="text-2xl font-black uppercase tracking-tight flex items-center gap-3"><ReceiptText className="text-amber-500"/> Histórico Consolidado</h3>
+                   <button onClick={exportData} className="flex items-center gap-2 px-6 py-3 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase"><Download size={16}/> Exportar CSV</button>
                 </div>
                 <div className="space-y-4">
-                  {allTrips.slice(0, 5).map(trip => (
-                    <div key={trip.id} className="p-6 bg-slate-900/50 rounded-3xl border border-white/5 flex items-center justify-between group">
-                      <div className="flex items-center gap-6">
-                        <div className={`p-4 rounded-2xl ${trip.status === TripStatus.COMPLETED ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'}`}>
-                          <ReceiptText size={24}/>
-                        </div>
-                        <div>
-                          <h4 className="font-black text-sm uppercase tracking-tighter">{trip.origin.split(' - ')[0]} ➔ {trip.destination.split(' - ')[0]}</h4>
-                          <p className="text-[10px] text-slate-500 font-bold uppercase mt-1">Status: {trip.status}</p>
-                        </div>
+                   {allTrips.slice(0, 10).map(t => (
+                      <div key={t.id} className="p-6 bg-slate-900/50 rounded-3xl flex justify-between items-center border border-white/5">
+                         <div>
+                            <p className="text-sm font-black uppercase">{t.origin.split(' - ')[0]} ➔ {t.destination.split(' - ')[0]}</p>
+                            <p className="text-[10px] text-slate-500 font-bold">{t.date}</p>
+                         </div>
+                         <div className="text-right">
+                            <p className="font-black">R$ {t.agreed_price.toLocaleString()}</p>
+                            <p className="text-[10px] font-bold text-amber-500">{t.status}</p>
+                         </div>
                       </div>
-                      <div className="text-right">
-                         <p className="text-sm font-black">{formatCurrency(trip.agreed_price)}</p>
-                         <p className="text-[9px] text-slate-500 font-bold uppercase">{trip.distance_km} KM</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="bg-slate-900/50 border border-white/10 p-10 rounded-[4rem] flex flex-col items-center justify-center text-center">
-                 <ShieldCheck size={64} className="text-amber-500 mb-6" />
-                 <h3 className="text-2xl font-black uppercase tracking-tight mb-2">Monitoramento</h3>
-                 <p className="text-slate-500 text-sm font-bold uppercase max-w-[200px] leading-relaxed">Operação rodando com {totals.fleetCount} veículos ativos na rede AuriLog.</p>
-                 <button onClick={() => setActiveTab('FLEET')} className="mt-8 px-8 py-4 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all">Ver Frota Completa</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'DRIVERS' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fade-in">
-             <div className="bg-white/5 p-10 rounded-[4rem] border border-white/10">
-                <h3 className="text-2xl font-black mb-8 flex items-center gap-3 uppercase tracking-tight"><UserPlus className="text-amber-500" size={28}/> Adicionar Motorista</h3>
-                <form onSubmit={handleAddDriver} className="space-y-6">
-                   <input required placeholder="Nome do Condutor" className="w-full p-6 bg-slate-900 border-none rounded-3xl font-bold text-white outline-none focus:ring-2 focus:ring-amber-500/50 transition-all" value={driverForm.name} onChange={e => setDriverForm({...driverForm, name: e.target.value})} />
-                   <input required type="email" placeholder="E-mail de Login" className="w-full p-6 bg-slate-900 border-none rounded-3xl font-bold text-white outline-none focus:ring-2 focus:ring-amber-500/50 transition-all" value={driverForm.email} onChange={e => setDriverForm({...driverForm, email: e.target.value})} />
-                   <input required type="password" placeholder="Senha Provisória" className="w-full p-6 bg-slate-900 border-none rounded-3xl font-bold text-white outline-none focus:ring-2 focus:ring-amber-500/50 transition-all" value={driverForm.password} onChange={e => setDriverForm({...driverForm, password: e.target.value})} />
-                   <button type="submit" disabled={loading} className="w-full py-6 bg-amber-500 text-slate-950 rounded-3xl font-black uppercase text-xs shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3">
-                     {loading ? <Loader2 className="animate-spin" /> : 'Cadastrar na Equipe'}
-                   </button>
-                </form>
-             </div>
-             <div className="bg-white/5 p-10 rounded-[4rem] border border-white/10">
-                <h3 className="text-2xl font-black mb-8 uppercase tracking-tight">Equipe Cadastrada</h3>
-                <div className="space-y-4 max-h-[500px] overflow-y-auto pr-4 custom-scrollbar">
-                   {drivers.map(d => (
-                     <div key={d.id} className="p-6 bg-slate-900/50 rounded-3xl flex items-center justify-between group border border-white/5">
-                        <div className="flex items-center gap-4">
-                           <div className="w-12 h-12 bg-white/5 text-amber-500 rounded-2xl flex items-center justify-center font-black uppercase">{d.name[0]}</div>
-                           <div>
-                              <h4 className="font-black text-sm uppercase">{d.name}</h4>
-                              <p className="text-[10px] text-slate-500 font-bold">{d.email}</p>
-                           </div>
-                        </div>
-                        <div className="flex gap-2">
-                           <button onClick={() => handleDeleteDriver(d.id)} className="p-3 bg-white/5 text-slate-500 hover:text-rose-500 transition-all rounded-xl"><Trash2 size={18}/></button>
-                        </div>
-                     </div>
                    ))}
                 </div>
              </div>
           </div>
         )}
 
-        {activeTab === 'FLEET' && (
-          <div className="bg-white/5 p-10 rounded-[4rem] border border-white/10 animate-fade-in">
-             <div className="flex justify-between items-center mb-10">
-                <h3 className="text-2xl font-black uppercase tracking-tight">Inventário de Frota</h3>
-                <span className="bg-white/5 px-6 py-2 rounded-full text-[10px] font-black text-slate-400 uppercase tracking-widest">{allVehicles.length} Veículos Total</span>
-             </div>
-             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {allVehicles.map(v => (
-                   <div key={v.id} className="p-8 bg-slate-900 border border-white/5 rounded-[3rem] group hover:border-amber-500/50 transition-all">
-                      <div className="flex justify-between items-start mb-6">
-                         <div className="p-4 bg-white/5 text-amber-500 rounded-2xl"><Truck size={28}/></div>
-                         <span className="bg-white text-slate-950 px-4 py-1.5 rounded-xl text-xs font-black uppercase">{v.plate}</span>
-                      </div>
-                      <h4 className="text-lg font-black uppercase">{v.model}</h4>
-                      <p className="text-slate-500 font-bold text-xs mt-1">{v.year}</p>
-                      <div className="mt-6 grid grid-cols-2 gap-3">
-                         <div className="bg-white/5 p-4 rounded-2xl">
-                            <p className="text-[8px] font-black text-slate-500 uppercase">KM Registrado</p>
-                            <p className="text-base font-black text-white">{v.current_km.toLocaleString()}</p>
-                         </div>
-                         <div className="bg-white/5 p-4 rounded-2xl">
-                            <p className="text-[8px] font-black text-slate-500 uppercase">Eixos</p>
-                            <p className="text-base font-black text-white">{v.axles || 2}</p>
-                         </div>
-                      </div>
-                   </div>
-                ))}
-             </div>
-          </div>
+        {activeTab === 'TRACKING' && (
+           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-fade-in h-[700px]">
+              <div className="bg-white/5 p-8 rounded-[4rem] border border-white/10 flex flex-col">
+                 <h3 className="text-xl font-black uppercase mb-8 flex items-center gap-3"><Users className="text-amber-500"/> Motoristas Ativos</h3>
+                 <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
+                    {locations.length === 0 ? (
+                       <p className="text-center text-slate-500 text-xs py-20">Nenhuma localização recebida.</p>
+                    ) : locations.map(loc => (
+                       <div key={loc.user_id} className="p-5 bg-slate-900 border border-white/5 rounded-3xl flex justify-between items-center">
+                          <div>
+                             <p className="text-sm font-black uppercase">{loc.email.split('@')[0]}</p>
+                             <p className="text-[9px] text-slate-500 font-bold">Visto em: {new Date(loc.updated_at).toLocaleTimeString()}</p>
+                          </div>
+                          <button className="p-3 bg-amber-500 text-slate-950 rounded-xl"><MapPin size={16}/></button>
+                       </div>
+                    ))}
+                 </div>
+              </div>
+              <div className="lg:col-span-2 bg-white/5 rounded-[4rem] border border-white/10 overflow-hidden relative">
+                 <div className="absolute inset-0 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm z-10">
+                    <div className="text-center p-10 bg-slate-950 rounded-3xl border border-white/10 max-w-sm">
+                       <MapPinned size={48} className="text-amber-500 mx-auto mb-4" />
+                       <h4 className="text-lg font-black uppercase mb-2">Monitoramento de GPS</h4>
+                       <p className="text-slate-500 text-xs leading-relaxed">Clique em um motorista para visualizar a última posição precisa no satélite.</p>
+                    </div>
+                 </div>
+                 <iframe title="Map" className="w-full h-full border-0 opacity-20" src="https://www.google.com/maps/embed?pb=!1m14!1m12!1m3!1d15000000!2d-50!3d-15!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!5e0!3m2!1sen!2sbr!4v1" />
+              </div>
+           </div>
         )}
 
-        {activeTab === 'ALERTS' && (
-           <div className="max-w-3xl mx-auto animate-fade-in">
+        {activeTab === 'PARTNERS' && (
+           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fade-in">
               <div className="bg-white/5 p-10 rounded-[4rem] border border-white/10">
-                 <h3 className="text-2xl font-black mb-8 flex items-center gap-3 uppercase tracking-tight"><Bell className="text-amber-500" size={28}/> Enviar Comunicado</h3>
-                 <form onSubmit={handleSendAlert} className="space-y-6">
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Título do Alerta</label>
-                       <input required placeholder="Ex: Manutenção Programada" className="w-full p-6 bg-slate-900 border-none rounded-3xl font-bold text-white outline-none focus:ring-2 focus:ring-amber-500/50 transition-all" value={alertForm.title} onChange={e => setAlertForm({...alertForm, title: e.target.value})} />
-                    </div>
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Mensagem Detalhada</label>
-                       <textarea required rows={4} placeholder="Escreva aqui..." className="w-full p-6 bg-slate-900 border-none rounded-3xl font-bold text-white outline-none focus:ring-2 focus:ring-amber-500/50 transition-all resize-none" value={alertForm.message} onChange={e => setAlertForm({...alertForm, message: e.target.value})} />
-                    </div>
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Destinatário (Opcional)</label>
-                       <select className="w-full p-6 bg-slate-900 border-none rounded-3xl font-bold text-white outline-none focus:ring-2 focus:ring-amber-500/50 transition-all" value={alertForm.target_user_email} onChange={e => setAlertForm({...alertForm, target_user_email: e.target.value})}>
-                          <option value="">Enviar para Todos</option>
-                          {drivers.map(d => <option key={d.id} value={d.email}>{d.name} ({d.email})</option>)}
-                       </select>
-                    </div>
-                    <button type="submit" disabled={loading} className="w-full py-6 bg-white text-slate-950 rounded-3xl font-black uppercase text-xs shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3">
-                       {loading ? <Loader2 className="animate-spin" /> : <><Send size={18}/> Transmitir Comunicado</>}
-                    </button>
+                 <h3 className="text-2xl font-black mb-8 uppercase tracking-tight flex items-center gap-3"><Store className="text-amber-500"/> Cadastrar Novo Ponto</h3>
+                 <form onSubmit={handleAddPartner} className="space-y-6">
+                    <input required placeholder="Nome do Estabelecimento" className="w-full p-6 bg-slate-900 rounded-3xl border-none outline-none focus:ring-2 focus:ring-amber-500/50" value={partnerForm.name} onChange={e => setPartnerForm({...partnerForm, name: e.target.value})} />
+                    <select className="w-full p-6 bg-slate-900 rounded-3xl border-none outline-none focus:ring-2 focus:ring-amber-500/50" value={partnerForm.type} onChange={e => setPartnerForm({...partnerForm, type: e.target.value})}>
+                       <option>Posto de Combustível</option>
+                       <option>Oficina Diesel</option>
+                       <option>Borracharia</option>
+                       <option>Restaurante / Parada</option>
+                       <option>Pátio / Descanso</option>
+                    </select>
+                    <input required placeholder="Endereço Completo" className="w-full p-6 bg-slate-900 rounded-3xl border-none outline-none" value={partnerForm.address} onChange={e => setPartnerForm({...partnerForm, address: e.target.value})} />
+                    <input placeholder="Link do Google Maps" className="w-full p-6 bg-slate-900 rounded-3xl border-none outline-none" value={partnerForm.location_url} onChange={e => setPartnerForm({...partnerForm, location_url: e.target.value})} />
+                    <button type="submit" disabled={loading} className="w-full py-6 bg-amber-500 text-slate-950 rounded-3xl font-black uppercase text-xs shadow-2xl">Adicionar Parceiro</button>
                  </form>
+              </div>
+              <div className="bg-white/5 p-10 rounded-[4rem] border border-white/10">
+                 <h3 className="text-2xl font-black mb-8 uppercase tracking-tight">Rede Credenciada</h3>
+                 <div className="space-y-4 max-h-[500px] overflow-y-auto pr-4 custom-scrollbar">
+                    {roadServices.map(s => (
+                       <div key={s.id} className="p-6 bg-slate-900/50 border border-white/5 rounded-3xl flex justify-between items-center group">
+                          <div className="flex items-center gap-4">
+                             <div className="p-3 bg-white/5 text-amber-500 rounded-2xl">
+                                {s.type.includes('Posto') ? <Fuel size={20}/> : s.type.includes('Oficina') ? <Wrench size={20}/> : <Utensils size={20}/>}
+                             </div>
+                             <div>
+                                <p className="text-sm font-black uppercase">{s.name}</p>
+                                <p className="text-[10px] text-slate-500 font-bold">{s.type}</p>
+                             </div>
+                          </div>
+                          <button onClick={() => deleteRecord('road_services', s.id)} className="p-3 bg-rose-500/10 text-rose-500 rounded-xl opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={18}/></button>
+                       </div>
+                    ))}
+                 </div>
+              </div>
+           </div>
+        )}
+
+        {activeTab === 'DRIVERS' && (
+           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fade-in">
+              <div className="bg-white/5 p-10 rounded-[4rem] border border-white/10">
+                 <h3 className="text-2xl font-black mb-8 uppercase flex items-center gap-3"><UserPlus className="text-amber-500"/> Adicionar Condutor</h3>
+                 <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    setLoading(true);
+                    await supabase.from('drivers').insert([driverForm]);
+                    setDriverForm({name:'', email:'', password:''});
+                    loadAllAdminData();
+                 }} className="space-y-6">
+                    <input required placeholder="Nome Completo" className="w-full p-6 bg-slate-900 rounded-3xl border-none outline-none" value={driverForm.name} onChange={e => setDriverForm({...driverForm, name: e.target.value})} />
+                    <input required type="email" placeholder="E-mail de Login" className="w-full p-6 bg-slate-900 rounded-3xl border-none outline-none" value={driverForm.email} onChange={e => setDriverForm({...driverForm, email: e.target.value})} />
+                    <input required type="password" placeholder="Chave de Acesso" className="w-full p-6 bg-slate-900 rounded-3xl border-none outline-none" value={driverForm.password} onChange={e => setDriverForm({...driverForm, password: e.target.value})} />
+                    <button type="submit" className="w-full py-6 bg-amber-500 text-slate-950 rounded-3xl font-black uppercase text-xs">Liberar Acesso</button>
+                 </form>
+              </div>
+              <div className="bg-white/5 p-10 rounded-[4rem] border border-white/10">
+                 <h3 className="text-2xl font-black mb-8 uppercase">Equipe Cadastrada</h3>
+                 <div className="space-y-4">
+                    {drivers.map(d => (
+                       <div key={d.id} className="p-6 bg-slate-900/50 border border-white/5 rounded-3xl flex justify-between items-center">
+                          <div className="flex items-center gap-4">
+                             <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center font-black text-amber-500 uppercase">{d.name[0]}</div>
+                             <div>
+                                <p className="text-sm font-black uppercase">{d.name}</p>
+                                <p className="text-[10px] text-slate-500 font-bold">{d.email}</p>
+                             </div>
+                          </div>
+                          <button onClick={() => deleteRecord('drivers', d.id)} className="p-3 text-slate-500 hover:text-rose-500"><Trash2 size={20}/></button>
+                       </div>
+                    ))}
+                 </div>
+              </div>
+           </div>
+        )}
+
+        {activeTab === 'CONFIG' && (
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-fade-in">
+              <div className="bg-white/5 p-10 rounded-[4rem] border border-white/10">
+                 <h3 className="text-2xl font-black mb-6 uppercase flex items-center gap-3"><Filter className="text-amber-500"/> Categorias de Carga</h3>
+                 <div className="space-y-3">
+                    {['Geral', 'Granel Sólido', 'Granel Líquido', 'Frigorificada', 'Conteinerizada', 'Perigosa'].map(cat => (
+                       <div key={cat} className="p-4 bg-slate-900 rounded-2xl flex justify-between items-center">
+                          <span className="text-sm font-bold uppercase">{cat}</span>
+                          <span className="text-[9px] font-black bg-emerald-500/10 text-emerald-500 px-2 py-1 rounded">ATIVO</span>
+                       </div>
+                    ))}
+                    <button className="w-full py-4 border-2 border-dashed border-white/10 rounded-2xl text-[10px] font-black uppercase text-slate-500 mt-4">+ Adicionar Nova Categoria</button>
+                 </div>
+              </div>
+              <div className="bg-white/5 p-10 rounded-[4rem] border border-white/10">
+                 <h3 className="text-2xl font-black mb-6 uppercase flex items-center gap-3"><Settings className="text-amber-500"/> Configurações de Sistema</h3>
+                 <div className="space-y-6">
+                    <div className="flex justify-between items-center py-4 border-b border-white/5">
+                       <div><p className="font-bold text-sm">Backup Automático</p><p className="text-[10px] text-slate-500 font-bold uppercase">Diário às 03:00</p></div>
+                       <div className="w-12 h-6 bg-amber-500 rounded-full flex items-center px-1"><div className="w-4 h-4 bg-white rounded-full ml-auto"></div></div>
+                    </div>
+                    <div className="flex justify-between items-center py-4 border-b border-white/5">
+                       <div><p className="font-bold text-sm">Notificações Push</p><p className="text-[10px] text-slate-500 font-bold uppercase">Alertas de Excesso de Jornada</p></div>
+                       <div className="w-12 h-6 bg-amber-500 rounded-full flex items-center px-1"><div className="w-4 h-4 bg-white rounded-full ml-auto"></div></div>
+                    </div>
+                 </div>
               </div>
            </div>
         )}

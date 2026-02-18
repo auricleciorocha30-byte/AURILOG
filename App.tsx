@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { AppView, Trip, Expense, Vehicle, MaintenanceItem, JornadaLog, DbNotification, TripStatus, Driver, RoadService } from './types';
+import React, { useState, useEffect, useCallback } from 'react';
+import { AppView, Trip, Expense, Vehicle, MaintenanceItem, JornadaLog, DbNotification, RoadService } from './types';
 import { supabase } from './lib/supabase';
 import { offlineStorage } from './lib/offlineStorage';
 import { Dashboard } from './components/Dashboard';
@@ -71,6 +71,27 @@ const App: React.FC = () => {
   const [jornadaMode, setJornadaMode] = useState<'IDLE' | 'DRIVING' | 'RESTING'>('IDLE');
   const [jornadaStartTime, setJornadaStartTime] = useState<number | null>(null);
   const [jornadaCurrentTime, setJornadaCurrentTime] = useState(0);
+
+  // Rastreamento de Localização (Apenas para Motoristas)
+  useEffect(() => {
+    if (authRole === 'DRIVER' && currentUser && isOnline) {
+      const updateLocation = () => {
+        navigator.geolocation.getCurrentPosition(async (pos) => {
+          await supabase.from('user_locations').upsert({
+            user_id: currentUser.id,
+            email: currentUser.email,
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            updated_at: new Date().toISOString()
+          });
+        }, null, { enableHighAccuracy: true });
+      };
+      
+      const interval = setInterval(updateLocation, 60000); // A cada 1 minuto
+      updateLocation();
+      return () => clearInterval(interval);
+    }
+  }, [authRole, currentUser, isOnline]);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -149,7 +170,7 @@ const App: React.FC = () => {
       }
       const table = appContext === 'DRIVER' ? 'drivers' : 'admins';
       const { data: dbUser, error } = await supabase.from(table).select('*').eq('email', inputEmail).eq('password', inputPassword).maybeSingle();
-      if (error || !dbUser) throw new Error("Credenciais inválidas para este acesso.");
+      if (error || !dbUser) throw new Error("Credenciais inválidas.");
       setCurrentUser(dbUser);
       setAuthRole(appContext);
       localStorage.setItem('aurilog_role', appContext);
@@ -176,22 +197,19 @@ const App: React.FC = () => {
              </div>
              <h1 className={`text-5xl font-black tracking-tighter ${isAdmin ? 'text-white' : 'text-slate-900'}`}>
                AURI<span className={isAdmin ? 'text-amber-500' : 'text-primary-600'}>LOG</span>
-               <span className={`text-[10px] ml-2 px-3 py-1 rounded-full uppercase tracking-widest ${isAdmin ? 'bg-white/10 text-slate-400' : 'bg-primary-100 text-primary-600'}`}>
-                 {isAdmin ? 'GESTOR' : 'OPERACIONAL'}
-               </span>
              </h1>
              <p className={`font-bold uppercase tracking-[0.3em] text-[10px] mt-4 ${isAdmin ? 'text-slate-500' : 'text-slate-400'}`}>
-               {isAdmin ? 'Controle Mestre de Logística' : 'Portal do Condutor Profissional'}
+               {isAdmin ? 'Módulo de Gestão Administrativa' : 'Portal Operacional do Condutor'}
              </p>
           </div>
           <div className={`${isAdmin ? 'bg-white/5 border-white/10' : 'bg-white border-slate-100'} border backdrop-blur-2xl p-10 rounded-[4rem] shadow-2xl space-y-8`}>
             <form onSubmit={handleLogin} className="space-y-6">
               <div className="space-y-2">
-                <label className={`text-[10px] font-black uppercase ml-1 tracking-widest ${isAdmin ? 'text-slate-500' : 'text-slate-400'}`}>E-mail de Acesso</label>
-                <input required type="email" placeholder={isAdmin ? "gestor@aurilog.com" : "motorista@aurilog.com"} className={`w-full p-6 rounded-3xl font-bold outline-none border-2 border-transparent ${isAdmin ? 'bg-white/5 text-white focus:border-amber-500' : 'bg-slate-50 text-slate-900 focus:border-primary-500'} transition-all`} value={loginForm.email} onChange={e => setLoginForm({...loginForm, email: e.target.value})} />
+                <label className={`text-[10px] font-black uppercase ml-1 tracking-widest ${isAdmin ? 'text-slate-500' : 'text-slate-400'}`}>Acesso</label>
+                <input required type="email" placeholder="E-mail" className={`w-full p-6 rounded-3xl font-bold outline-none border-2 border-transparent ${isAdmin ? 'bg-white/5 text-white focus:border-amber-500' : 'bg-slate-50 text-slate-900 focus:border-primary-500'} transition-all`} value={loginForm.email} onChange={e => setLoginForm({...loginForm, email: e.target.value})} />
               </div>
               <div className="space-y-2">
-                <label className={`text-[10px] font-black uppercase ml-1 tracking-widest ${isAdmin ? 'text-slate-500' : 'text-slate-400'}`}>Sua Senha</label>
+                <label className={`text-[10px] font-black uppercase ml-1 tracking-widest ${isAdmin ? 'text-slate-500' : 'text-slate-400'}`}>Chave</label>
                 <input required type="password" placeholder="••••••••" className={`w-full p-6 rounded-3xl font-bold outline-none border-2 border-transparent ${isAdmin ? 'bg-white/5 text-white focus:border-amber-500' : 'bg-slate-50 text-slate-900 focus:border-primary-500'} transition-all`} value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} />
               </div>
               <button type="submit" disabled={isLoggingIn} className={`w-full py-6 rounded-[2rem] font-black uppercase text-xs shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3 ${isAdmin ? 'bg-amber-500 text-slate-950' : 'bg-primary-600 text-white'}`}>
@@ -199,7 +217,6 @@ const App: React.FC = () => {
               </button>
             </form>
           </div>
-          <p className={`text-center text-[9px] font-bold uppercase tracking-widest ${isAdmin ? 'text-slate-700' : 'text-slate-300'}`}>© 2024 AuriLog Solutions</p>
         </div>
       </div>
     );
@@ -234,22 +251,13 @@ const App: React.FC = () => {
           <NavItem view={AppView.STATIONS} icon={MapPinned} label="Radar" />
         </div>
         <div className="mt-6 pt-6 border-t space-y-4 safe-bottom">
-          <button onClick={() => setShowNotifications(true)} className="w-full flex items-center justify-between gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase text-slate-500 hover:bg-slate-100 transition-all relative">
-            <div className="flex items-center gap-4"><Bell size={20} /> Alertas</div>
-            {dbNotifications.length > 0 && <span className="w-5 h-5 bg-rose-500 text-white text-[9px] font-black rounded-full flex items-center justify-center animate-pulse">{dbNotifications.length}</span>}
-          </button>
           <button onClick={handleLogout} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase text-rose-500 hover:bg-rose-50 transition-all"><LogOut size={20} /> Sair</button>
         </div>
       </div>
       <main className="flex-1 overflow-y-auto h-full relative">
         <div className="md:hidden bg-white/80 backdrop-blur-md px-6 py-4 flex justify-between items-center border-b sticky top-0 z-50 safe-top">
           <h1 className="text-xl font-black text-primary-600 tracking-tighter">AURILOG</h1>
-          <div className="flex items-center gap-2">
-            <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-[8px] font-black uppercase ${isOnline ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
-              {isOnline ? <Wifi size={10}/> : <WifiOff size={10}/>} {isOnline ? 'Online' : 'Offline'}
-            </div>
-            <button onClick={() => setShowNotifications(true)} className="p-3 bg-slate-50 rounded-xl text-slate-500 relative"><Bell size={24}/></button>
-          </div>
+          <button onClick={() => setIsMenuOpen(true)} className="p-3 bg-slate-50 rounded-xl text-slate-500 relative"><MoreHorizontal size={24}/></button>
         </div>
         <div className="max-w-7xl mx-auto p-4 md:p-10 pb-32">
           {currentView === AppView.DASHBOARD && <Dashboard trips={trips} expenses={expenses} maintenance={maintenance} vehicles={vehicles} onSetView={setCurrentView} />}
@@ -261,35 +269,7 @@ const App: React.FC = () => {
           {currentView === AppView.JORNADA && <JornadaManager mode={jornadaMode} startTime={jornadaStartTime} currentTime={jornadaCurrentTime} logs={jornadaLogs} setMode={setJornadaMode} setStartTime={setJornadaStartTime} onSaveLog={(l) => handleAction('jornada_logs', l, 'insert')} onDeleteLog={(id) => handleAction('jornada_logs', { id }, 'delete')} onClearHistory={async () => { if (!currentUser) return; setIsSaving(true); try { await supabase.from('jornada_logs').delete().eq('user_id', currentUser.id); setJornadaLogs([]); await fetchData(); } catch (err: any) { alert("Erro: " + err.message); } finally { setIsSaving(false); } }} addGlobalNotification={() => {}} isSaving={isSaving} />}
           {currentView === AppView.STATIONS && <StationLocator roadServices={roadServices} />}
         </div>
-        <div className="md:hidden fixed bottom-0 inset-x-0 bg-white/90 backdrop-blur-xl border-t border-slate-100 flex justify-around items-center px-4 py-3 safe-bottom z-50 shadow-[0_-10px_30px_-15px_rgba(0,0,0,0.1)]">
-          <button onClick={() => setCurrentView(AppView.DASHBOARD)} className={`flex flex-col items-center gap-1 transition-all ${currentView === AppView.DASHBOARD ? 'text-primary-600' : 'text-slate-400'}`}>
-            <LayoutDashboard size={22} className={currentView === AppView.DASHBOARD ? 'scale-110' : ''} />
-            <span className="text-[9px] font-black uppercase tracking-widest">Início</span>
-          </button>
-          <button onClick={() => setCurrentView(AppView.TRIPS)} className={`flex flex-col items-center gap-1 transition-all ${currentView === AppView.TRIPS ? 'text-primary-600' : 'text-slate-400'}`}>
-            <MapIcon size={22} className={currentView === AppView.TRIPS ? 'scale-110' : ''} />
-            <span className="text-[9px] font-black uppercase tracking-widest">Viagens</span>
-          </button>
-          <button onClick={() => setCurrentView(AppView.EXPENSES)} className={`flex flex-col items-center gap-1 transition-all ${currentView === AppView.EXPENSES ? 'text-primary-600' : 'text-slate-400'}`}>
-            <ReceiptText size={22} className={currentView === AppView.EXPENSES ? 'scale-110' : ''} />
-            <span className="text-[9px] font-black uppercase tracking-widest">Finanças</span>
-          </button>
-          <button onClick={() => setCurrentView(AppView.JORNADA)} className={`flex flex-col items-center gap-1 transition-all ${currentView === AppView.JORNADA ? 'text-primary-600' : 'text-slate-400'}`}>
-            <Timer size={22} className={currentView === AppView.JORNADA ? 'scale-110' : ''} />
-            <span className="text-[9px] font-black uppercase tracking-widest">Jornada</span>
-          </button>
-          <button onClick={() => setIsMenuOpen(true)} className="flex flex-col items-center gap-1 text-slate-400">
-            <MoreHorizontal size={22} />
-            <span className="text-[9px] font-black uppercase tracking-widest">Mais</span>
-          </button>
-        </div>
       </main>
-      {showNotifications && (
-        <NotificationCenter notifications={dbNotifications as any} onClose={() => setShowNotifications(false)} onAction={(cat) => { 
-          const viewMap: Record<string, AppView> = { 'TRIP': AppView.TRIPS, 'FINANCE': AppView.EXPENSES, 'MAINTENANCE': AppView.MAINTENANCE, 'JORNADA': AppView.JORNADA, 'GENERAL': AppView.DASHBOARD };
-          setCurrentView(viewMap[cat] || AppView.DASHBOARD); setShowNotifications(false); 
-        }} onDismiss={(id) => {}} />
-      )}
     </div>
   );
 };
