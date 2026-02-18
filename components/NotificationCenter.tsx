@@ -8,7 +8,8 @@ interface Notification {
   title: string;
   message: string;
   category: 'JORNADA' | 'MAINTENANCE' | 'FINANCE' | 'TRIP' | 'GENERAL';
-  date: string;
+  // Fix: renamed from date to created_at to match usage on line 81 and DbNotification
+  created_at: string;
   target_user_email?: string;
 }
 
@@ -78,11 +79,11 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notifica
                     <p className="text-xs text-slate-500 font-medium leading-relaxed mb-2">{n.message}</p>
                     
                     <div className="flex items-center gap-2 text-[8px] font-black text-slate-400 uppercase tracking-widest mt-2">
-                       <span>{n.date}</span>
+                       <span>{new Date(n.created_at || Date.now()).toLocaleDateString('pt-BR')}</span>
                        {n.target_user_email && (
                          <>
                            <span className="text-slate-200">•</span>
-                           <span className="text-primary-600">PARA: {n.target_user_email.toUpperCase()}</span>
+                           <span className="text-primary-600">PARA VOCÊ</span>
                          </>
                        )}
                     </div>
@@ -91,7 +92,10 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notifica
                 
                 <div className="absolute right-3 top-3">
                   <button 
-                    onClick={(e) => { e.stopPropagation(); onDismiss(n.id); }}
+                    onClick={(e) => { 
+                      e.stopPropagation(); 
+                      onDismiss(n.id); 
+                    }}
                     className="p-2 bg-white/80 hover:bg-rose-500 hover:text-white shadow-sm rounded-full text-slate-300 transition-all"
                     title="Descartar"
                   >

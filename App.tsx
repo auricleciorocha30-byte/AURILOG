@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AppView, Trip, Expense, Vehicle, MaintenanceItem, JornadaLog, DbNotification, TripStatus, Driver, RoadService } from './types';
 import { supabase } from './lib/supabase';
 import { offlineStorage } from './lib/offlineStorage';
@@ -53,6 +53,12 @@ const App: React.FC = () => {
     return savedUser ? JSON.parse(savedUser) : null;
   });
 
+  const [dismissedIds, setDismissedIds] = useState<string[]>(() => {
+    if (!currentUser) return [];
+    const saved = localStorage.getItem(`dismissed_notifs_${currentUser.email}`);
+    return saved ? JSON.parse(saved) : [];
+  });
+
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
@@ -62,7 +68,7 @@ const App: React.FC = () => {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [maintenance, setMaintenance] = useState<MaintenanceItem[]>([]);
   const [jornadaLogs, setJornadaLogs] = useState<JornadaLog[]>([]);
-  const [notifications, setNotifications] = useState<DbNotification[]>([]);
+  const [dbNotifications, setDbNotifications] = useState<DbNotification[]>([]);
   const [roadServices, setRoadServices] = useState<RoadService[]>([]);
   
   const [isSaving, setIsSaving] = useState(false);
@@ -85,7 +91,72 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Rastreamento GPS para Motoristas
+  // Alertas Automáticos de Sistema
+  const systemAlerts = useMemo(() => {
+    if (authRole !== 'DRIVER' || !currentUser) return [];
+    const alerts: any[] = [];
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    // Alertas de Despesas Vencidas
+    expenses.filter(e => !e.is_paid && e.due_date).forEach(e => {
+      const dueDate = new Date(e.due_date + 'T12:00:00');
+      const today = new Date();
+      today.setHours(12, 0, 0, 0);
+      
+      if (dueDate <= today) {
+        alerts.push({
+          id: `sys-exp-${e.id}`,
+          title: `Pagamento Pendente: ${e.description}`,
+          message: `A despesa de R$ ${e.amount.toLocaleString()} ${e.due_date === todayStr ? 'vence HOJE' : 'está VENCIDA'}.`,
+          type: 'URGENT',
+          category: 'FINANCE',
+          created_at: new Date().toISOString()
+        });
+      }
+    });
+
+    // Alertas de Manutenção
+    maintenance.forEach(m => {
+      const vehicle = vehicles.find(v => v.id === m.vehicle_id);
+      if (!vehicle) return;
+      
+      const pDate = new Date(m.purchase_date + 'T12:00:00');
+      const expiryDate = new Date(pDate);
+      expiryDate.setMonth(pDate.getMonth() + (m.warranty_months || 0));
+      const kmLimit = (m.km_at_purchase || 0) + (m.warranty_km || 0);
+      
+      if ((m.warranty_months > 0 && expiryDate < new Date()) || (m.warranty_km > 0 && vehicle.current_km >= kmLimit)) {
+        alerts.push({
+          id: `sys-maint-${m.id}`,
+          title: `Manutenção Vencida: ${m.part_name}`,
+          message: `A garantia/validade da peça no veículo ${vehicle.plate} expirou.`,
+          type: 'WARNING',
+          category: 'MAINTENANCE',
+          created_at: new Date().toISOString()
+        });
+      }
+    });
+
+    // Alertas de Viagens do Dia
+    trips.filter(t => t.date === todayStr && t.status === TripStatus.SCHEDULED).forEach(t => {
+      alerts.push({
+        id: `sys-trip-${t.id}`,
+        title: `Viagem Agendada para Hoje`,
+        message: `Você tem uma carga de ${t.origin.split(' - ')[0]} para ${t.destination.split(' - ')[0]} hoje.`,
+        type: 'INFO',
+        category: 'TRIP',
+        created_at: new Date().toISOString()
+      });
+    });
+
+    return alerts;
+  }, [expenses, maintenance, trips, vehicles, authRole, currentUser]);
+
+  const allNotifications = useMemo(() => {
+    return [...systemAlerts, ...dbNotifications].filter(n => !dismissedIds.includes(n.id));
+  }, [systemAlerts, dbNotifications, dismissedIds]);
+
+  // Rastreamento GPS
   useEffect(() => {
     if (authRole === 'DRIVER' && currentUser && isOnline) {
       const updateLocation = () => {
@@ -99,7 +170,6 @@ const App: React.FC = () => {
           }, { onConflict: 'email' });
         });
       };
-
       updateLocation();
       const interval = setInterval(updateLocation, 30000);
       return () => clearInterval(interval);
@@ -134,7 +204,7 @@ const App: React.FC = () => {
       if (vehiclesRes.data) setVehicles(vehiclesRes.data);
       if (maintenanceRes.data) setMaintenance(maintenanceRes.data);
       if (jornadaRes.data) setJornadaLogs(jornadaRes.data);
-      if (notificationsRes.data) setNotifications(notificationsRes.data);
+      if (notificationsRes.data) setDbNotifications(notificationsRes.data);
       if (servicesRes.data) setRoadServices(servicesRes.data);
     } catch (error) {
       console.warn("Modo Offline");
@@ -151,13 +221,11 @@ const App: React.FC = () => {
     try {
       const userId = currentUser.id;
       const payload = { ...data, user_id: userId };
-
       if (!isOnline) {
         await offlineStorage.save(table, payload, action);
         await fetchData();
         return;
       }
-      
       let response;
       if (action === 'insert') response = await supabase.from(table).insert([payload]).select().single();
       else if (action === 'update') {
@@ -166,14 +234,20 @@ const App: React.FC = () => {
       } else if (action === 'delete') {
         response = await supabase.from(table).delete().eq('id', data.id).eq('user_id', userId);
       }
-      
       if (response?.error) throw response.error;
       await fetchData();
     } catch (error: any) {
-      console.error(error);
       alert(`Erro: ${error.message}`);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleDismissNotification = (id: string) => {
+    const nextDismissed = [...dismissedIds, id];
+    setDismissedIds(nextDismissed);
+    if (currentUser) {
+      localStorage.setItem(`dismissed_notifs_${currentUser.email}`, JSON.stringify(nextDismissed));
     }
   };
 
@@ -185,7 +259,6 @@ const App: React.FC = () => {
     try {
       const table = isDriverContext ? 'drivers' : 'admins';
       const role = isDriverContext ? 'DRIVER' : 'ADMIN';
-
       if (!isDriverContext && inputEmail === 'admin@aurilog.com' && inputPassword === 'admin123') {
         const masterUser = { id: '00000000-0000-0000-0000-000000000000', name: 'Gestor Master', email: 'admin@aurilog.com' };
         setCurrentUser(masterUser);
@@ -194,11 +267,9 @@ const App: React.FC = () => {
         localStorage.setItem('aurilog_user', JSON.stringify(masterUser));
         return;
       }
-
       const { data: dbUser, error } = await supabase.from(table).select('*').eq('email', inputEmail).eq('password', inputPassword).maybeSingle();
       if (error) throw error;
       if (!dbUser) throw new Error("Credenciais inválidas.");
-
       setCurrentUser(dbUser);
       setAuthRole(role);
       localStorage.setItem('aurilog_role', role);
@@ -277,9 +348,9 @@ const App: React.FC = () => {
             <div className="flex items-center gap-4">
               <Bell size={20} /> Alertas
             </div>
-            {notifications.length > 0 && (
+            {allNotifications.length > 0 && (
               <span className="w-5 h-5 bg-rose-500 text-white text-[9px] font-black rounded-full flex items-center justify-center animate-pulse">
-                {notifications.length}
+                {allNotifications.length}
               </span>
             )}
           </button>
@@ -295,7 +366,7 @@ const App: React.FC = () => {
           <div className="flex items-center gap-2">
             <button onClick={() => setShowNotifications(true)} className="p-3 bg-slate-50 rounded-xl text-slate-500 relative">
               <Bell size={24}/>
-              {notifications.length > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 bg-rose-500 text-white text-[9px] font-black rounded-full flex items-center justify-center animate-pulse">{notifications.length}</span>}
+              {allNotifications.length > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 bg-rose-500 text-white text-[9px] font-black rounded-full flex items-center justify-center animate-pulse">{allNotifications.length}</span>}
             </button>
             <button onClick={() => setIsMenuOpen(true)} className="p-3 bg-slate-50 rounded-xl text-slate-500"><Menu size={24}/></button>
           </div>
@@ -308,13 +379,35 @@ const App: React.FC = () => {
           {currentView === AppView.VEHICLES && <VehicleManager vehicles={vehicles} onAddVehicle={(v) => handleAction('vehicles', v, 'insert')} onUpdateVehicle={(id, v) => handleAction('vehicles', { ...v, id }, 'update')} onDeleteVehicle={(id) => handleAction('vehicles', { id }, 'delete')} isSaving={isSaving} />}
           {currentView === AppView.MAINTENANCE && <MaintenanceManager maintenance={maintenance} vehicles={vehicles} onAddMaintenance={(m) => handleAction('maintenance', m, 'insert')} onDeleteMaintenance={(id) => handleAction('maintenance', { id }, 'delete')} isSaving={isSaving} />}
           {currentView === AppView.CALCULATOR && <FreightCalculator />}
-          {currentView === AppView.JORNADA && <JornadaManager mode={jornadaMode} startTime={jornadaStartTime} currentTime={jornadaCurrentTime} logs={jornadaLogs} setMode={setJornadaMode} setStartTime={setJornadaStartTime} onSaveLog={(l) => handleAction('jornada_logs', l, 'insert')} onDeleteLog={(id) => handleAction('jornada_logs', { id }, 'delete')} onClearHistory={async () => {}} addGlobalNotification={() => {}} isSaving={isSaving} />}
+          {currentView === AppView.JORNADA && <JornadaManager mode={jornadaMode} startTime={jornadaStartTime} currentTime={jornadaCurrentTime} logs={jornadaLogs} setMode={setJornadaMode} setStartTime={setJornadaStartTime} onSaveLog={(l) => handleAction('jornada_logs', l, 'insert')} onDeleteLog={(id) => handleAction('jornada_logs', { id }, 'delete')} onClearHistory={async () => {
+             if (!currentUser) return;
+             setIsSaving(true);
+             try {
+               const { error } = await supabase.from('jornada_logs').delete().eq('user_id', currentUser.id);
+               if (error) throw error;
+               await fetchData();
+             } catch (err: any) {
+               alert("Erro ao limpar histórico: " + err.message);
+             } finally {
+               setIsSaving(false);
+             }
+          }} addGlobalNotification={() => {}} isSaving={isSaving} />}
           {currentView === AppView.STATIONS && <StationLocator roadServices={roadServices} />}
         </div>
       </main>
 
       {showNotifications && (
-        <NotificationCenter notifications={notifications as any} onClose={() => setShowNotifications(false)} onAction={(cat) => { setCurrentView(cat as AppView); setShowNotifications(false); }} onDismiss={(id) => setNotifications(prev => prev.filter(n => n.id !== id))} />
+        <NotificationCenter notifications={allNotifications as any} onClose={() => setShowNotifications(false)} onAction={(cat) => { 
+          const viewMap: Record<string, AppView> = {
+            'TRIP': AppView.TRIPS,
+            'FINANCE': AppView.EXPENSES,
+            'MAINTENANCE': AppView.MAINTENANCE,
+            'JORNADA': AppView.JORNADA,
+            'GENERAL': AppView.DASHBOARD
+          };
+          setCurrentView(viewMap[cat] || AppView.DASHBOARD); 
+          setShowNotifications(false); 
+        }} onDismiss={handleDismissNotification} />
       )}
     </div>
   );
