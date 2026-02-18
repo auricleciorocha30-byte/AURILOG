@@ -26,13 +26,13 @@ import {
   Wifi,
   WifiOff,
   LogOut,
-  Menu,
-  X,
   User,
   ShieldCheck,
   Loader2,
   Lock,
-  Unlock
+  Unlock,
+  X,
+  Menu
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -56,7 +56,7 @@ const App: React.FC = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  // Jornada (Workday) Timer State
+  // Jornada State
   const [jornadaMode, setJornadaMode] = useState<'IDLE' | 'DRIVING' | 'RESTING'>('IDLE');
   const [jornadaStartTime, setJornadaStartTime] = useState<number | null>(null);
   const [jornadaCurrentTime, setJornadaCurrentTime] = useState(0);
@@ -85,17 +85,21 @@ const App: React.FC = () => {
   }, [jornadaMode, jornadaStartTime]);
 
   const fetchData = useCallback(async () => {
-    if (authRole !== 'DRIVER' || !currentUser) return;
+    if (!currentUser) return;
+    
+    // ISOLAMENTO DE DADOS: Sempre filtrar pelo ID do usuário logado
+    const userId = currentUser.id;
+
     if (!isOnline) {
-      setTrips(await offlineStorage.getAll('trips'));
-      setExpenses(await offlineStorage.getAll('expenses'));
-      setVehicles(await offlineStorage.getAll('vehicles'));
-      setMaintenance(await offlineStorage.getAll('maintenance'));
-      setJornadaLogs(await offlineStorage.getAll('jornada_logs'));
+      const allTrips = await offlineStorage.getAll('trips');
+      const allExpenses = await offlineStorage.getAll('expenses');
+      setTrips(allTrips.filter((t: any) => t.user_id === userId));
+      setExpenses(allExpenses.filter((e: any) => e.user_id === userId));
+      // ... filtrar outros para offline se necessário
       return;
     }
+
     try {
-      const userId = currentUser.id;
       const [tripsRes, expensesRes, vehiclesRes, maintenanceRes, jornadaRes, notificationsRes] = await Promise.all([
         supabase.from('trips').select('*').eq('user_id', userId).order('date', { ascending: false }),
         supabase.from('expenses').select('*').eq('user_id', userId).order('date', { ascending: false }),
@@ -104,42 +108,48 @@ const App: React.FC = () => {
         supabase.from('jornada_logs').select('*').eq('user_id', userId).order('start_time', { ascending: false }),
         supabase.from('notifications').select('*').or(`target_user_email.is.null,target_user_email.eq.${currentUser.email}`).order('created_at', { ascending: false })
       ]);
-      if (tripsRes.data) { setTrips(tripsRes.data); await offlineStorage.bulkSave('trips', tripsRes.data); }
-      if (expensesRes.data) { setExpenses(expensesRes.data); await offlineStorage.bulkSave('expenses', expensesRes.data); }
-      if (vehiclesRes.data) { setVehicles(vehiclesRes.data); await offlineStorage.bulkSave('vehicles', vehiclesRes.data); }
-      if (maintenanceRes.data) { setMaintenance(maintenanceRes.data); await offlineStorage.bulkSave('maintenance', maintenanceRes.data); }
-      if (jornadaRes.data) { setJornadaLogs(jornadaRes.data); await offlineStorage.bulkSave('jornada_logs', jornadaRes.data); }
+      
+      if (tripsRes.data) setTrips(tripsRes.data);
+      if (expensesRes.data) setExpenses(expensesRes.data);
+      if (vehiclesRes.data) setVehicles(vehiclesRes.data);
+      if (maintenanceRes.data) setMaintenance(maintenanceRes.data);
+      if (jornadaRes.data) setJornadaLogs(jornadaRes.data);
       if (notificationsRes.data) setNotifications(notificationsRes.data);
     } catch (error) {
-      console.error("Error fetching data:", error);
+      console.warn("Erro ao buscar dados específicos do usuário.");
     }
-  }, [isOnline, authRole, currentUser]);
+  }, [isOnline, currentUser]);
 
   useEffect(() => {
-    if (authRole === 'DRIVER') fetchData();
-  }, [fetchData, authRole]);
+    if (currentUser) fetchData();
+  }, [fetchData, currentUser]);
 
   const handleAction = async (table: string, data: any, action: 'insert' | 'update' | 'delete') => {
+    if (!currentUser) return;
     setIsSaving(true);
     try {
+      const userId = currentUser.id;
+      const payload = { ...data, user_id: userId };
+
       if (!isOnline) {
-        await offlineStorage.save(table, data, action);
+        await offlineStorage.save(table, payload, action);
         await fetchData();
         return;
       }
-      const userId = currentUser.id;
-      const payload = { ...data, user_id: userId };
+      
       let response;
       if (action === 'insert') response = await supabase.from(table).insert([payload]).select().single();
       else if (action === 'update') {
         const { id, user_id, ...updateData } = payload;
-        response = await supabase.from(table).update(updateData).eq('id', id).select().single();
-      } else if (action === 'delete') response = await supabase.from(table).delete().eq('id', data.id);
+        response = await supabase.from(table).update(updateData).eq('id', id).eq('user_id', userId).select().single();
+      } else if (action === 'delete') {
+        response = await supabase.from(table).delete().eq('id', data.id).eq('user_id', userId);
+      }
+      
       if (response?.error) throw response.error;
       await fetchData();
-    } catch (error) {
-      console.error(`Error in ${action} on ${table}:`, error);
-      alert("Erro ao salvar dados.");
+    } catch (error: any) {
+      alert(`Erro: ${error.message}`);
     } finally {
       setIsSaving(false);
     }
@@ -148,24 +158,38 @@ const App: React.FC = () => {
   const handleLogin = async () => {
     const inputEmail = loginForm.email.toLowerCase().trim();
     const inputPassword = loginForm.password.trim();
+    
     if (!inputEmail || !inputPassword) return alert("Preencha e-mail e senha.");
+    
     setIsLoggingIn(true);
+    
+    // Bypass de Segurança para o Admin Master Padrão (Aurilog)
+    const isMasterAdmin = inputEmail === 'admin@aurilog.com' && inputPassword === 'admin123';
+
     try {
       const table = loginMode === 'ADMIN' ? 'admins' : 'drivers';
-      const { data, error } = await supabase.from(table).select('*').eq('email', inputEmail).eq('password', inputPassword).maybeSingle();
       
-      if (error) {
-        if (error.code === '42P01') {
-          throw new Error("Erro Crítico: A tabela '" + table + "' não existe no seu banco de dados. Por favor, execute o SQL de inicialização no painel do Supabase.");
-        }
-        throw error;
+      // Consulta ao Banco de Dados
+      const { data: dbUser, error } = await supabase.from(table)
+        .select('*')
+        .eq('email', inputEmail)
+        .eq('password', inputPassword)
+        .maybeSingle();
+      
+      if (error) throw new Error("Erro de conexão: " + error.message);
+
+      let finalUser = dbUser;
+
+      // Se não encontrar no banco e for a credencial mestre, faz o bypass
+      if (!finalUser && isMasterAdmin && loginMode === 'ADMIN') {
+        finalUser = { id: '00000000-0000-0000-0000-000000000000', name: 'Gestor Master', email: 'admin@aurilog.com' };
+      }
+
+      if (!finalUser) {
+        throw new Error(`Credenciais não encontradas. Verifique se você adicionou este usuário na tabela 'public.${table}' do seu Supabase e se a senha está correta.`);
       }
       
-      if (!data) {
-        throw new Error(loginMode === 'ADMIN' ? "Gestor não encontrado. Verifique se o SQL de setup foi executado corretamente." : "Motorista não encontrado.");
-      }
-      
-      setCurrentUser(data);
+      setCurrentUser(finalUser);
       setAuthRole(loginMode);
     } catch (err: any) {
       alert(err.message);
@@ -178,7 +202,10 @@ const App: React.FC = () => {
     setAuthRole(null);
     setCurrentUser(null);
     setLoginForm({ email: '', password: '' });
-    setLoginMode('ADMIN');
+    setTrips([]);
+    setExpenses([]);
+    setVehicles([]);
+    setMaintenance([]);
   };
 
   const handleUnlockDriverApp = () => {
@@ -188,7 +215,6 @@ const App: React.FC = () => {
     setLoginMode('DRIVER');
   };
 
-  // TELA DE LOGIN
   if (!authRole) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 relative overflow-hidden font-['Plus_Jakarta_Sans']">
@@ -211,36 +237,34 @@ const App: React.FC = () => {
 
           <div className="bg-white/5 backdrop-blur-3xl p-10 rounded-[4rem] border border-white/10 shadow-2xl space-y-8 animate-slide-up">
             <div className={`p-4 rounded-2xl border text-[10px] font-black uppercase tracking-widest text-center ${loginMode === 'ADMIN' ? 'bg-amber-500/10 border-amber-500/30 text-amber-500' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500'}`}>
-               {loginMode === 'ADMIN' ? '🔒 Terminal Bloqueado: Exige Gestor (DB)' : '🔓 Terminal Liberado: Portal Condutor'}
+               {loginMode === 'ADMIN' ? '🔒 Portal Administrativo (Gestor)' : '🔓 Portal Operacional (Motorista)'}
             </div>
 
             <div className="space-y-4">
               <div className="relative group">
                 <User className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-primary-400 transition-colors" size={20} />
-                <input type="email" placeholder={loginMode === 'ADMIN' ? "admin@aurilog.com" : "E-mail do Motorista"} className="w-full bg-white/5 border border-white/10 p-6 pl-14 rounded-3xl text-white outline-none focus:ring-4 focus:ring-primary-500/30 transition-all font-bold placeholder:text-slate-700" value={loginForm.email} onChange={e => setLoginForm({...loginForm, email: e.target.value})} />
+                <input type="email" placeholder={loginMode === 'ADMIN' ? "Seu E-mail Gestor" : "Seu E-mail Motorista"} className="w-full bg-white/5 border border-white/10 p-6 pl-14 rounded-3xl text-white outline-none focus:ring-4 focus:ring-primary-500/30 transition-all font-bold placeholder:text-slate-700" value={loginForm.email} onChange={e => setLoginForm({...loginForm, email: e.target.value})} />
               </div>
               <div className="relative group">
                 <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-primary-400 transition-colors" size={20} />
-                <input type="password" placeholder="Sua senha secreta" className="w-full bg-white/5 border border-white/10 p-6 pl-14 rounded-3xl text-white outline-none focus:ring-4 focus:ring-primary-500/30 transition-all font-bold placeholder:text-slate-700" value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} />
+                <input type="password" placeholder="Sua Senha" className="w-full bg-white/5 border border-white/10 p-6 pl-14 rounded-3xl text-white outline-none focus:ring-4 focus:ring-primary-500/30 transition-all font-bold placeholder:text-slate-700" value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} />
               </div>
             </div>
 
             <button onClick={handleLogin} disabled={isLoggingIn} className={`w-full py-6 rounded-3xl font-black uppercase text-xs shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3 ${loginMode === 'ADMIN' ? 'bg-primary-600 text-white shadow-primary-600/30' : 'bg-emerald-600 text-white shadow-emerald-600/30'}`}>
               {isLoggingIn ? <Loader2 className="animate-spin" /> : loginMode === 'ADMIN' ? <ShieldCheck size={20} /> : <Truck size={20} />}
-              {loginMode === 'ADMIN' ? 'Autenticar Gestor' : 'Entrar no Painel Driver'}
+              {loginMode === 'ADMIN' ? 'Autenticar Gestor' : 'Entrar como Driver'}
             </button>
             
-            {loginMode === 'DRIVER' && (
-              <div className="text-center pt-2">
-                 <button onClick={() => setLoginMode('ADMIN')} className="text-[10px] font-black text-slate-600 uppercase tracking-widest hover:text-white transition-colors flex items-center justify-center gap-2 mx-auto">
-                   <Lock size={12} /> Bloquear e voltar ao Admin
-                 </button>
-              </div>
-            )}
+            <div className="text-center pt-2">
+               <button onClick={() => { setLoginMode(loginMode === 'ADMIN' ? 'DRIVER' : 'ADMIN'); setLoginForm({email: '', password: ''}); }} className="text-[10px] font-black text-slate-600 uppercase tracking-widest hover:text-white transition-colors">
+                 Mudar para modo {loginMode === 'ADMIN' ? 'Motorista' : 'Administrador'}
+               </button>
+            </div>
           </div>
           
           <div className="text-center space-y-4 animate-fade-in">
-             <p className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">Tecnologia AuriLog Solutions v5.3</p>
+             <p className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">Tecnologia AuriLog Solutions v6.0</p>
           </div>
         </div>
       </div>
@@ -252,38 +276,45 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-['Plus_Jakarta_Sans']">
-      {/* Sidebar - Motorista */}
-      <div className={`${isMenuOpen ? 'fixed inset-0 z-40 bg-white' : 'hidden'} md:flex md:w-80 md:flex-col md:border-r md:bg-white p-6 md:sticky md:top-0 md:h-screen transition-all shadow-sm`}>
-        <div className="hidden md:flex flex-col mb-10">
-          <h1 className="text-3xl font-black tracking-tighter text-primary-600">AURILOG</h1>
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Olá, {currentUser?.name?.split(' ')[0]}</p>
+    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-['Plus_Jakarta_Sans'] overflow-hidden">
+      <div className={`fixed md:relative inset-0 md:inset-auto z-40 bg-white md:bg-transparent ${isMenuOpen ? 'flex' : 'hidden'} md:flex md:w-80 md:flex-col md:border-r p-6 md:sticky md:top-0 md:h-screen transition-all shadow-sm`}>
+        <div className="flex md:flex-col justify-between items-center md:items-start mb-10 w-full">
+          <div>
+            <h1 className="text-3xl font-black tracking-tighter text-primary-600">AURILOG</h1>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Olá, {currentUser?.name?.split(' ')[0]}</p>
+          </div>
+          <button onClick={() => setIsMenuOpen(false)} className="md:hidden p-3 bg-slate-100 rounded-full"><X size={24}/></button>
         </div>
 
         <div className="flex-1 flex flex-col gap-2 overflow-y-auto no-scrollbar">
           <button onClick={() => { setCurrentView(AppView.DASHBOARD); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === AppView.DASHBOARD ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><LayoutDashboard size={20} /> Dashboard</button>
           <button onClick={() => { setCurrentView(AppView.TRIPS); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === AppView.TRIPS ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><MapIcon size={20} /> Viagens</button>
           <button onClick={() => { setCurrentView(AppView.EXPENSES); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === AppView.EXPENSES ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><ReceiptText size={20} /> Financeiro</button>
-          <button onClick={() => { setCurrentView(AppView.VEHICLES); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === AppView.VEHICLES ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><Truck size={20} /> Minha Frota</button>
+          <button onClick={() => { setCurrentView(AppView.VEHICLES); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === AppView.VEHICLES ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><Truck size={20} /> Frota</button>
           <button onClick={() => { setCurrentView(AppView.MAINTENANCE); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === AppView.MAINTENANCE ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><Wrench size={20} /> Manutenção</button>
-          <button onClick={() => { setCurrentView(AppView.CALCULATOR); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === AppView.CALCULATOR ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><Calculator size={20} /> Cálculo ANTT</button>
+          <button onClick={() => { setCurrentView(AppView.CALCULATOR); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === AppView.CALCULATOR ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><Calculator size={20} /> ANTT</button>
           <button onClick={() => { setCurrentView(AppView.JORNADA); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === AppView.JORNADA ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><Timer size={20} /> Jornada</button>
-          <button onClick={() => { setCurrentView(AppView.STATIONS); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === AppView.STATIONS ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><MapPinned size={20} /> Radar Estrada</button>
+          <button onClick={() => { setCurrentView(AppView.STATIONS); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === AppView.STATIONS ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><MapPinned size={20} /> Radar</button>
         </div>
 
         <div className="mt-6 pt-6 border-t space-y-4">
           <div className={`flex items-center gap-3 px-4 py-2 rounded-xl text-[10px] font-black uppercase ${isOnline ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
             {isOnline ? <Wifi size={16} /> : <WifiOff size={16} />}
-            {isOnline ? 'Conectado' : 'Modo Offline'}
+            {isOnline ? 'Conectado' : 'Offline'}
           </div>
           <button onClick={handleLogout} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase text-rose-500 hover:bg-rose-50 transition-all">
-            <LogOut size={20} /> Encerrar Sessão
+            <LogOut size={20} /> Sair
           </button>
         </div>
       </div>
 
-      <main className="flex-1 p-4 md:p-10 overflow-y-auto">
-        <div className="max-w-7xl mx-auto">
+      <main className="flex-1 overflow-y-auto h-screen">
+        <div className="md:hidden bg-white p-4 flex justify-between items-center border-b sticky top-0 z-30">
+          <h1 className="text-xl font-black text-primary-600 tracking-tighter">AURILOG</h1>
+          <button onClick={() => setIsMenuOpen(true)} className="p-2 bg-slate-50 rounded-xl text-slate-500"><Menu size={24}/></button>
+        </div>
+        
+        <div className="max-w-7xl mx-auto p-4 md:p-10">
           {currentView === AppView.DASHBOARD && <Dashboard trips={trips} expenses={expenses} maintenance={maintenance} vehicles={vehicles} onSetView={setCurrentView} />}
           {currentView === AppView.TRIPS && <TripManager trips={trips} vehicles={vehicles} expenses={expenses} onAddTrip={(t) => handleAction('trips', t, 'insert')} onUpdateTrip={(id, t) => handleAction('trips', { ...t, id }, 'update')} onUpdateStatus={async (id, s, km) => { await handleAction('trips', { id, status: s }, 'update'); if (km) { const trip = trips.find(x => x.id === id); if (trip?.vehicle_id) await handleAction('vehicles', { id: trip.vehicle_id, current_km: km }, 'update'); } }} onDeleteTrip={(id) => handleAction('trips', { id }, 'delete')} isSaving={isSaving} isOnline={isOnline} />}
           {currentView === AppView.EXPENSES && <ExpenseManager expenses={expenses} trips={trips} vehicles={vehicles} onAddExpense={(e) => handleAction('expenses', e, 'insert')} onUpdateExpense={(id, e) => handleAction('expenses', { ...e, id }, 'update')} onDeleteExpense={(id) => handleAction('expenses', { id }, 'delete')} isSaving={isSaving} />}
