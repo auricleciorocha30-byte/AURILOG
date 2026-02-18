@@ -2,13 +2,14 @@
 import React, { useState, useEffect } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { Fuel, MapPin, Loader2, Navigation, Search, Wrench, Hammer, AlertTriangle, Map as MapIcon, X, ExternalLink, ChevronRight, MapPinHouse, Radar, Truck, Utensils, Store, ShieldCheck, MapPinned } from 'lucide-react';
-import { RoadService } from '../types';
+import { RoadService, CargoCategory } from '../types';
 
 interface StationLocatorProps {
   roadServices?: RoadService[];
+  savedCategories?: CargoCategory[];
 }
 
-export const StationLocator: React.FC<StationLocatorProps> = ({ roadServices = [] }) => {
+export const StationLocator: React.FC<StationLocatorProps> = ({ roadServices = [], savedCategories = [] }) => {
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [services, setServices] = useState<any[]>([]);
@@ -19,6 +20,7 @@ export const StationLocator: React.FC<StationLocatorProps> = ({ roadServices = [
 
   const categories = Array.from(new Set([
     'Posto de Combustível', 'Restaurante', 'Oficina Diesel', 'Borracharia',
+    ...savedCategories.map(c => c.name),
     ...roadServices.map(s => s.type)
   ]));
 

@@ -522,6 +522,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                        <option>Borracharia</option>
                        <option>Restaurante / Parada</option>
                        <option>Pátio / Descanso</option>
+                       {categories.map(cat => <option key={cat.id} value={cat.name}>{cat.name}</option>)}
                     </select>
                     <input required placeholder="Endereço ou Rodovia KM" className="w-full p-6 bg-slate-900 rounded-3xl border-none outline-none font-bold text-white" value={partnerForm.address} onChange={e => setPartnerForm({...partnerForm, address: e.target.value})} />
                     <input placeholder="URL do Google Maps (Opcional)" className="w-full p-6 bg-slate-900 rounded-3xl border-none outline-none font-bold text-white" value={partnerForm.location_url} onChange={e => setPartnerForm({...partnerForm, location_url: e.target.value})} />

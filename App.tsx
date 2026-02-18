@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { AppView, Trip, Expense, Vehicle, MaintenanceItem, JornadaLog, DbNotification, RoadService } from './types';
+import { AppView, Trip, Expense, Vehicle, MaintenanceItem, JornadaLog, DbNotification, RoadService, CargoCategory } from './types';
 import { supabase } from './lib/supabase';
 import { offlineStorage } from './lib/offlineStorage';
 import { Dashboard } from './components/Dashboard';
@@ -63,6 +63,7 @@ const App: React.FC = () => {
   const [jornadaLogs, setJornadaLogs] = useState<JornadaLog[]>([]);
   const [dbNotifications, setDbNotifications] = useState<DbNotification[]>([]);
   const [roadServices, setRoadServices] = useState<RoadService[]>([]);
+  const [cargoCategories, setCargoCategories] = useState<CargoCategory[]>([]);
   
   const [isSaving, setIsSaving] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -129,14 +130,15 @@ const App: React.FC = () => {
     if (!isOnline) return;
 
     try {
-      const [tripsRes, expensesRes, vehiclesRes, maintenanceRes, jornadaRes, notificationsRes, servicesRes] = await Promise.all([
+      const [tripsRes, expensesRes, vehiclesRes, maintenanceRes, jornadaRes, notificationsRes, servicesRes, categoriesRes] = await Promise.all([
         supabase.from('trips').select('*').eq('user_id', userId).order('date', { ascending: false }),
         supabase.from('expenses').select('*').eq('user_id', userId).order('date', { ascending: false }),
         supabase.from('vehicles').select('*').eq('user_id', userId).order('plate', { ascending: true }),
         supabase.from('maintenance').select('*').eq('user_id', userId).order('purchase_date', { ascending: false }),
         supabase.from('jornada_logs').select('*').eq('user_id', userId).order('start_time', { ascending: false }),
         supabase.from('notifications').select('*').or(`target_user_email.is.null,target_user_email.eq.${currentUser.email}`).order('created_at', { ascending: false }),
-        supabase.from('road_services').select('*').order('name', { ascending: true })
+        supabase.from('road_services').select('*').order('name', { ascending: true }),
+        supabase.from('cargo_categories').select('*').order('name', { ascending: true })
       ]);
       if (tripsRes.data) setTrips(tripsRes.data);
       if (expensesRes.data) setExpenses(expensesRes.data);
@@ -145,6 +147,7 @@ const App: React.FC = () => {
       if (jornadaRes.data) setJornadaLogs(jornadaRes.data);
       if (notificationsRes.data) setDbNotifications(notificationsRes.data);
       if (servicesRes.data) setRoadServices(servicesRes.data);
+      if (categoriesRes.data) setCargoCategories(categoriesRes.data);
     } catch (error) { console.warn("Erro ao buscar dados."); }
   }, [isOnline, currentUser]);
 
@@ -317,7 +320,7 @@ const App: React.FC = () => {
           {currentView === AppView.MAINTENANCE && <MaintenanceManager maintenance={maintenance} vehicles={vehicles} onAddMaintenance={(m) => handleAction('maintenance', m, 'insert')} onDeleteMaintenance={(id) => handleAction('maintenance', { id }, 'delete')} isSaving={isSaving} />}
           {currentView === AppView.CALCULATOR && <FreightCalculator />}
           {currentView === AppView.JORNADA && <JornadaManager mode={jornadaMode} startTime={jornadaStartTime} currentTime={jornadaCurrentTime} logs={jornadaLogs} setMode={setJornadaMode} setStartTime={setJornadaStartTime} onSaveLog={(l) => handleAction('jornada_logs', l, 'insert')} onDeleteLog={(id) => handleAction('jornada_logs', { id }, 'delete')} onClearHistory={async () => { if (!currentUser) return; setIsSaving(true); try { await supabase.from('jornada_logs').delete().eq('user_id', currentUser.id); setJornadaLogs([]); await fetchData(); } catch (err: any) { alert("Erro: " + err.message); } finally { setIsSaving(false); } }} addGlobalNotification={() => {}} isSaving={isSaving} />}
-          {currentView === AppView.STATIONS && <StationLocator roadServices={roadServices} />}
+          {currentView === AppView.STATIONS && <StationLocator roadServices={roadServices} savedCategories={cargoCategories} />}
         </div>
       </main>
 
