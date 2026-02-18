@@ -1,43 +1,32 @@
 
--- AURILOG - SCRIPT DE ACESSO TOTAL
+-- AURILOG MASTER - SCRIPT DE ACESSO TOTAL
 -- Execute este script no SQL Editor do seu projeto Supabase
 
--- 1. Garantir tabelas de usuários no schema público
-CREATE TABLE IF NOT EXISTS admins (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  email TEXT UNIQUE NOT NULL,
-  password TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
+-- 1. DESATIVA TODA A SEGURANÇA DE LINHA (RLS)
+-- Isso permite que o aplicativo leia seus usuários inseridos manualmente sem bloqueios
+ALTER TABLE IF EXISTS public.admins DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.drivers DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.vehicles DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.trips DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.expenses DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.maintenance DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.jornada_logs DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.notifications DISABLE ROW LEVEL SECURITY;
 
-CREATE TABLE IF NOT EXISTS drivers (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  email TEXT UNIQUE NOT NULL,
-  password TEXT NOT NULL,
-  status TEXT DEFAULT 'Ativo',
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-
--- 2. DESATIVAR RLS (Security) para permitir reconhecimento imediato de usuários manuais
--- Isso é necessário para que a chave anon consiga ler os dados sem login auth complexo
-ALTER TABLE admins DISABLE ROW LEVEL SECURITY;
-ALTER TABLE drivers DISABLE ROW LEVEL SECURITY;
-ALTER TABLE vehicles DISABLE ROW LEVEL SECURITY;
-ALTER TABLE trips DISABLE ROW LEVEL SECURITY;
-ALTER TABLE expenses DISABLE ROW LEVEL SECURITY;
-ALTER TABLE maintenance DISABLE ROW LEVEL SECURITY;
-ALTER TABLE jornada_logs DISABLE ROW LEVEL SECURITY;
-
--- 3. PERMISSÕES PARA A CHAVE DA API (ANON)
+-- 2. DÁ PERMISSÃO PARA A CHAVE ANON (O que o app usa via Web)
+-- Garante que o usuário "anônimo" (público) tenha todas as permissões
 GRANT ALL ON ALL TABLES IN SCHEMA public TO anon;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated;
+GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO anon;
+GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO authenticated;
 
--- 4. Inserir Admin Master Aurilog (Caso não tenha inserido manualmente)
-INSERT INTO admins (name, email, password)
-VALUES ('Gestor Master Aurilog', 'admin@aurilog.com', 'admin123')
+-- 3. GARANTE QUE O ADMIN MESTRE EXISTE NA TABELA 'admins'
+-- Se você não inseriu manualmente, este comando criará o acesso master
+INSERT INTO public.admins (name, email, password)
+VALUES ('Gestor Master', 'admin@aurilog.com', 'admin123')
 ON CONFLICT (email) DO UPDATE SET password = 'admin123';
 
--- 5. Tabelas Operacionais com user_id para segregação
--- O App.tsx agora filtra tudo por user_id, garantindo que um motorista não veja dados do outro
+-- 4. VERIFIQUE SE OS USUÁRIOS QUE VOCÊ ADICIONOU ESTÃO NA TABELA 'public.drivers'
+-- O App.tsx procura nesta tabela por e-mail e senha.

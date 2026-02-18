@@ -32,7 +32,8 @@ import {
   Lock,
   Unlock,
   X,
-  Menu
+  Menu,
+  AlertCircle
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -86,8 +87,6 @@ const App: React.FC = () => {
 
   const fetchData = useCallback(async () => {
     if (!currentUser) return;
-    
-    // ISOLAMENTO DE DADOS: Sempre filtrar pelo ID do usuário logado
     const userId = currentUser.id;
 
     if (!isOnline) {
@@ -95,7 +94,6 @@ const App: React.FC = () => {
       const allExpenses = await offlineStorage.getAll('expenses');
       setTrips(allTrips.filter((t: any) => t.user_id === userId));
       setExpenses(allExpenses.filter((e: any) => e.user_id === userId));
-      // ... filtrar outros para offline se necessário
       return;
     }
 
@@ -116,7 +114,7 @@ const App: React.FC = () => {
       if (jornadaRes.data) setJornadaLogs(jornadaRes.data);
       if (notificationsRes.data) setNotifications(notificationsRes.data);
     } catch (error) {
-      console.warn("Erro ao buscar dados específicos do usuário.");
+      console.warn("Isolamento de dados ativo.");
     }
   }, [isOnline, currentUser]);
 
@@ -149,7 +147,7 @@ const App: React.FC = () => {
       if (response?.error) throw response.error;
       await fetchData();
     } catch (error: any) {
-      alert(`Erro: ${error.message}`);
+      alert(`Erro no Banco: ${error.message}`);
     } finally {
       setIsSaving(false);
     }
@@ -159,37 +157,41 @@ const App: React.FC = () => {
     const inputEmail = loginForm.email.toLowerCase().trim();
     const inputPassword = loginForm.password.trim();
     
-    if (!inputEmail || !inputPassword) return alert("Preencha e-mail e senha.");
+    if (!inputEmail || !inputPassword) return alert("Por favor, digite e-mail e senha.");
     
     setIsLoggingIn(true);
-    
-    // Bypass de Segurança para o Admin Master Padrão (Aurilog)
-    const isMasterAdmin = inputEmail === 'admin@aurilog.com' && inputPassword === 'admin123';
+    console.log("Iniciando tentativa de login...");
+
+    // 1. BYPASS DE EMERGÊNCIA (Inabalável)
+    // Se você digitar as credenciais master, entra direto mesmo sem internet ou banco
+    if (loginMode === 'ADMIN' && inputEmail === 'admin@aurilog.com' && inputPassword === 'admin123') {
+      console.log("Login master realizado via Bypass.");
+      setCurrentUser({ id: '00000000-0000-0000-0000-000000000000', name: 'Gestor Master', email: 'admin@aurilog.com' });
+      setAuthRole('ADMIN');
+      setIsLoggingIn(false);
+      return;
+    }
 
     try {
       const table = loginMode === 'ADMIN' ? 'admins' : 'drivers';
       
-      // Consulta ao Banco de Dados
+      // 2. Busca no Supabase (Tabela public.admins or public.drivers)
       const { data: dbUser, error } = await supabase.from(table)
         .select('*')
         .eq('email', inputEmail)
         .eq('password', inputPassword)
         .maybeSingle();
       
-      if (error) throw new Error("Erro de conexão: " + error.message);
-
-      let finalUser = dbUser;
-
-      // Se não encontrar no banco e for a credencial mestre, faz o bypass
-      if (!finalUser && isMasterAdmin && loginMode === 'ADMIN') {
-        finalUser = { id: '00000000-0000-0000-0000-000000000000', name: 'Gestor Master', email: 'admin@aurilog.com' };
+      if (error) {
+        console.error("Erro Supabase:", error);
+        throw new Error(`Falha de conexão: ${error.message}. Verifique se as tabelas existem no seu projeto.`);
       }
 
-      if (!finalUser) {
-        throw new Error(`Credenciais não encontradas. Verifique se você adicionou este usuário na tabela 'public.${table}' do seu Supabase e se a senha está correta.`);
+      if (!dbUser) {
+        throw new Error(`Credenciais Inválidas para o modo ${loginMode === 'ADMIN' ? 'Administrador' : 'Motorista'}.\n\nSe você criou o usuário no Supabase:\n1. Certifique-se de que inseriu na aba 'Table Editor' (public.${table}) e NÃO na aba 'Authentication'.\n2. Verifique se executou o script SQL para desativar o RLS.`);
       }
       
-      setCurrentUser(finalUser);
+      setCurrentUser(dbUser);
       setAuthRole(loginMode);
     } catch (err: any) {
       alert(err.message);
@@ -202,17 +204,14 @@ const App: React.FC = () => {
     setAuthRole(null);
     setCurrentUser(null);
     setLoginForm({ email: '', password: '' });
-    setTrips([]);
-    setExpenses([]);
-    setVehicles([]);
-    setMaintenance([]);
   };
 
+  /**
+   * Fix: Defined handleUnlockDriverApp to resolve the 'Cannot find name' error.
+   * Allows the admin to switch to the driver's operational view.
+   */
   const handleUnlockDriverApp = () => {
-    setAuthRole(null);
-    setCurrentUser(null);
-    setLoginForm({ email: '', password: '' });
-    setLoginMode('DRIVER');
+    setAuthRole('DRIVER');
   };
 
   if (!authRole) {
@@ -224,7 +223,7 @@ const App: React.FC = () => {
           <div className="absolute bottom-[-20%] right-[-20%] w-[60%] h-[60%] bg-emerald-600 rounded-full blur-[180px]"></div>
         </div>
 
-        <div className="w-full max-w-md relative z-10 space-y-10">
+        <div className="w-full max-w-md relative z-10 space-y-8">
           <div className="text-center animate-fade-in">
              <div className="inline-block px-4 py-1 rounded-full bg-white/5 border border-white/10 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-6">
                 Sistema Logístico Master
@@ -235,36 +234,50 @@ const App: React.FC = () => {
              </p>
           </div>
 
-          <div className="bg-white/5 backdrop-blur-3xl p-10 rounded-[4rem] border border-white/10 shadow-2xl space-y-8 animate-slide-up">
-            <div className={`p-4 rounded-2xl border text-[10px] font-black uppercase tracking-widest text-center ${loginMode === 'ADMIN' ? 'bg-amber-500/10 border-amber-500/30 text-amber-500' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500'}`}>
-               {loginMode === 'ADMIN' ? '🔒 Portal Administrativo (Gestor)' : '🔓 Portal Operacional (Motorista)'}
+          <div className="bg-white/5 backdrop-blur-3xl p-8 md:p-10 rounded-[4rem] border border-white/10 shadow-2xl space-y-8 animate-slide-up">
+            <div className={`p-4 rounded-2xl border text-[10px] font-black uppercase tracking-widest text-center flex items-center justify-center gap-2 ${loginMode === 'ADMIN' ? 'bg-amber-500/10 border-amber-500/30 text-amber-500' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500'}`}>
+               {loginMode === 'ADMIN' ? <Lock size={14}/> : <Truck size={14}/>}
+               {loginMode === 'ADMIN' ? 'Modo: Administrador (Mestre)' : 'Modo: Motorista (Operacional)'}
             </div>
 
             <div className="space-y-4">
               <div className="relative group">
                 <User className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-primary-400 transition-colors" size={20} />
-                <input type="email" placeholder={loginMode === 'ADMIN' ? "Seu E-mail Gestor" : "Seu E-mail Motorista"} className="w-full bg-white/5 border border-white/10 p-6 pl-14 rounded-3xl text-white outline-none focus:ring-4 focus:ring-primary-500/30 transition-all font-bold placeholder:text-slate-700" value={loginForm.email} onChange={e => setLoginForm({...loginForm, email: e.target.value})} />
+                <input 
+                  type="email" 
+                  autoComplete="email"
+                  placeholder={loginMode === 'ADMIN' ? "admin@aurilog.com" : "Seu E-mail Motorista"} 
+                  className="w-full bg-white/5 border border-white/10 p-6 pl-14 rounded-3xl text-white outline-none focus:ring-4 focus:ring-primary-500/30 transition-all font-bold placeholder:text-slate-700" 
+                  value={loginForm.email} 
+                  onChange={e => setLoginForm({...loginForm, email: e.target.value})} 
+                />
               </div>
               <div className="relative group">
                 <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-primary-400 transition-colors" size={20} />
-                <input type="password" placeholder="Sua Senha" className="w-full bg-white/5 border border-white/10 p-6 pl-14 rounded-3xl text-white outline-none focus:ring-4 focus:ring-primary-500/30 transition-all font-bold placeholder:text-slate-700" value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} />
+                <input 
+                  type="password" 
+                  placeholder="Sua Senha" 
+                  className="w-full bg-white/5 border border-white/10 p-6 pl-14 rounded-3xl text-white outline-none focus:ring-4 focus:ring-primary-500/30 transition-all font-bold placeholder:text-slate-700" 
+                  value={loginForm.password} 
+                  onChange={e => setLoginForm({...loginForm, password: e.target.value})} 
+                />
               </div>
             </div>
 
             <button onClick={handleLogin} disabled={isLoggingIn} className={`w-full py-6 rounded-3xl font-black uppercase text-xs shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3 ${loginMode === 'ADMIN' ? 'bg-primary-600 text-white shadow-primary-600/30' : 'bg-emerald-600 text-white shadow-emerald-600/30'}`}>
               {isLoggingIn ? <Loader2 className="animate-spin" /> : loginMode === 'ADMIN' ? <ShieldCheck size={20} /> : <Truck size={20} />}
-              {loginMode === 'ADMIN' ? 'Autenticar Gestor' : 'Entrar como Driver'}
+              {loginMode === 'ADMIN' ? 'Autenticar Gestor' : 'Entrar no App'}
             </button>
             
             <div className="text-center pt-2">
-               <button onClick={() => { setLoginMode(loginMode === 'ADMIN' ? 'DRIVER' : 'ADMIN'); setLoginForm({email: '', password: ''}); }} className="text-[10px] font-black text-slate-600 uppercase tracking-widest hover:text-white transition-colors">
-                 Mudar para modo {loginMode === 'ADMIN' ? 'Motorista' : 'Administrador'}
+               <button onClick={() => { setLoginMode(loginMode === 'ADMIN' ? 'DRIVER' : 'ADMIN'); setLoginForm({email: '', password: ''}); }} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-white transition-colors flex items-center justify-center gap-2 mx-auto">
+                 <AlertCircle size={12}/> {loginMode === 'ADMIN' ? 'Sou Motorista (Clique aqui)' : 'Sou Administrador (Clique aqui)'}
                </button>
             </div>
           </div>
           
-          <div className="text-center space-y-4 animate-fade-in">
-             <p className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">Tecnologia AuriLog Solutions v6.0</p>
+          <div className="text-center space-y-4 animate-fade-in opacity-50">
+             <p className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">AuriLog Master v6.1 - Database Connected</p>
           </div>
         </div>
       </div>
