@@ -32,26 +32,26 @@ import {
   MoreHorizontal,
   ChevronRight,
   User,
-  ArrowLeft
+  ArrowLeft,
+  Calendar
 } from 'lucide-react';
 
 const App: React.FC = () => {
-  // PERSISTÊNCIA E DEFINIÇÃO DA TELA INICIAL (ADMIN PRIMEIRO)
+  // O estado inicial prioriza o ADMIN a menos que o parâmetro 'mode=driver' esteja na URL
   const [appContext, setAppContext] = useState<'DRIVER' | 'ADMIN'>(() => {
     const queryParams = new URLSearchParams(window.location.search);
     const modeParam = queryParams.get('mode');
-    const savedMode = localStorage.getItem('aurilog_app_mode');
     
+    // Se explicitamente for driver na URL, entra como driver
     if (modeParam === 'driver') return 'DRIVER';
-    if (modeParam === 'admin') return 'ADMIN';
-    // Se não houver parâmetro nem histórico, o padrão é ADMIN
-    return (savedMode as 'DRIVER' | 'ADMIN') || 'ADMIN';
+    // Em qualquer outro caso, o padrão é sempre ADMIN
+    return 'ADMIN';
   });
 
   const [authRole, setAuthRole] = useState<'DRIVER' | 'ADMIN' | null>(() => {
     const savedRole = localStorage.getItem('aurilog_role') as 'DRIVER' | 'ADMIN' | null;
     const savedUser = localStorage.getItem('aurilog_user');
-    // Só mantém logado se o modo atual bater com o cargo salvo
+    // Só mantém logado se o contexto atual coincidir com o salvo
     if (savedRole === appContext && savedUser) return savedRole;
     return null;
   });
@@ -154,7 +154,6 @@ const App: React.FC = () => {
         setCurrentUser(masterUser);
         setAuthRole('ADMIN');
         localStorage.setItem('aurilog_role', 'ADMIN');
-        localStorage.setItem('aurilog_app_mode', 'ADMIN');
         localStorage.setItem('aurilog_user', JSON.stringify(masterUser));
         return;
       }
@@ -166,7 +165,6 @@ const App: React.FC = () => {
       setCurrentUser(dbUser);
       setAuthRole(appContext);
       localStorage.setItem('aurilog_role', appContext);
-      localStorage.setItem('aurilog_app_mode', appContext);
       localStorage.setItem('aurilog_user', JSON.stringify(dbUser));
     } catch (err: any) { alert(err.message); } finally { setIsLoggingIn(false); }
   };
@@ -178,13 +176,7 @@ const App: React.FC = () => {
     localStorage.removeItem('aurilog_user');
   };
 
-  const switchPortal = (mode: 'ADMIN' | 'DRIVER') => {
-    setAppContext(mode);
-    setLoginForm({ email: '', password: '' });
-    localStorage.setItem('aurilog_app_mode', mode);
-  };
-
-  // TELA DE LOGIN - SEPARAÇÃO DEFINITIVA
+  // TELA DE LOGIN - SEM LIGAÇÃO ENTRE ELAS
   if (!authRole) {
     if (appContext === 'ADMIN') {
       return (
@@ -217,15 +209,13 @@ const App: React.FC = () => {
                 </button>
               </form>
             </div>
-
-            <button onClick={() => switchPortal('DRIVER')} className="w-full flex items-center justify-center gap-2 py-4 text-slate-400 font-bold text-xs uppercase tracking-widest hover:text-white transition-colors">
-              <User size={16} /> Sou Motorista
-            </button>
+            <p className="text-center text-[9px] font-bold text-slate-700 uppercase tracking-widest">Acesso restrito a administradores do sistema</p>
           </div>
         </div>
       );
     }
 
+    // Portal do Motorista - Tela Separada
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 relative overflow-hidden font-['Plus_Jakarta_Sans']">
         <div className="absolute top-0 right-0 w-96 h-96 bg-primary-600/5 blur-[100px] rounded-full -translate-y-1/2 translate-x-1/2"></div>
@@ -256,21 +246,27 @@ const App: React.FC = () => {
               </button>
             </form>
           </div>
-
-          <button onClick={() => switchPortal('ADMIN')} className="w-full flex items-center justify-center gap-2 py-4 text-slate-400 font-bold text-xs uppercase tracking-widest hover:text-slate-900 transition-colors">
-            <ArrowLeft size={16} /> Voltar para Administração
-          </button>
+          <p className="text-center text-[9px] font-bold text-slate-400 uppercase tracking-widest">Painel Operacional para Caminhoneiros</p>
         </div>
       </div>
     );
   }
 
-  // LOGADO COMO ADMIN
+  // PORTAL ADMIN LOGADO
   if (authRole === 'ADMIN') {
-    return <AdminPanel onRefresh={fetchData} onLogout={handleLogout} onUnlockDriverApp={() => switchPortal('DRIVER')} />;
+    return (
+      <AdminPanel 
+        onRefresh={fetchData} 
+        onLogout={handleLogout} 
+        onUnlockDriverApp={() => { 
+          // Redireciona para o modo driver sem botão visual na login
+          window.location.href = window.location.origin + '?mode=driver';
+        }} 
+      />
+    );
   }
 
-  // LOGADO COMO MOTORISTA (Layout Sidebar + Main)
+  // PORTAL MOTORISTA LOGADO
   const NavItem = ({ view, icon: Icon, label }: { view: AppView, icon: any, label: string }) => (
     <button onClick={() => { setCurrentView(view); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === view ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}>
       <Icon size={20} /> {label}
@@ -323,7 +319,6 @@ const App: React.FC = () => {
           {currentView === AppView.VEHICLES && <VehicleManager vehicles={vehicles} onAddVehicle={(v) => handleAction('vehicles', v, 'insert')} onUpdateVehicle={(id, v) => handleAction('vehicles', { ...v, id }, 'update')} onDeleteVehicle={(id) => handleAction('vehicles', { id }, 'delete')} isSaving={isSaving} />}
           {currentView === AppView.MAINTENANCE && <MaintenanceManager maintenance={maintenance} vehicles={vehicles} onAddMaintenance={(m) => handleAction('maintenance', m, 'insert')} onDeleteMaintenance={(id) => handleAction('maintenance', { id }, 'delete')} isSaving={isSaving} />}
           {currentView === AppView.CALCULATOR && <FreightCalculator />}
-          {/* Fix: use correct setter setJornadaStartTime instead of setStartTime */}
           {currentView === AppView.JORNADA && <JornadaManager mode={jornadaMode} startTime={jornadaStartTime} currentTime={jornadaCurrentTime} logs={jornadaLogs} setMode={setJornadaMode} setStartTime={setJornadaStartTime} onSaveLog={(l) => handleAction('jornada_logs', l, 'insert')} onDeleteLog={(id) => handleAction('jornada_logs', { id }, 'delete')} onClearHistory={async () => { if (!currentUser) return; setIsSaving(true); try { await supabase.from('jornada_logs').delete().eq('user_id', currentUser.id); setJornadaLogs([]); await fetchData(); } catch (err: any) { alert("Erro: " + err.message); } finally { setIsSaving(false); } }} addGlobalNotification={() => {}} isSaving={isSaving} />}
           {currentView === AppView.STATIONS && <StationLocator roadServices={roadServices} />}
         </div>
