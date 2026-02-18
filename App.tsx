@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AppView, Trip, Expense, Vehicle, MaintenanceItem, JornadaLog, DbNotification, TripStatus, Driver, RoadService } from './types';
 import { supabase } from './lib/supabase';
 import { offlineStorage } from './lib/offlineStorage';
@@ -33,22 +33,16 @@ import {
   Unlock,
   X,
   Menu,
-  AlertCircle,
-  Database,
-  ExternalLink,
-  ShieldAlert,
-  Smartphone
+  AlertCircle
 } from 'lucide-react';
 
 const App: React.FC = () => {
   const queryParams = new URLSearchParams(window.location.search);
   const isDriverContext = queryParams.get('mode') === 'driver';
 
-  // Inicialização robusta: Recupera a sessão imediatamente para evitar logout no refresh
   const [authRole, setAuthRole] = useState<'DRIVER' | 'ADMIN' | null>(() => {
     const savedRole = localStorage.getItem('aurilog_role') as 'DRIVER' | 'ADMIN' | null;
     if (!savedRole) return null;
-    // Garante que o usuário está no portal correto
     if (isDriverContext && savedRole === 'DRIVER') return 'DRIVER';
     if (!isDriverContext && savedRole === 'ADMIN') return 'ADMIN';
     return null;
@@ -63,7 +57,6 @@ const App: React.FC = () => {
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
 
-  // Data states
   const [trips, setTrips] = useState<Trip[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -77,7 +70,6 @@ const App: React.FC = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  // Jornada State
   const [jornadaMode, setJornadaMode] = useState<'IDLE' | 'DRIVING' | 'RESTING'>('IDLE');
   const [jornadaStartTime, setJornadaStartTime] = useState<number | null>(null);
   const [jornadaCurrentTime, setJornadaCurrentTime] = useState(0);
@@ -92,6 +84,27 @@ const App: React.FC = () => {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
+
+  // Rastreamento GPS para Motoristas
+  useEffect(() => {
+    if (authRole === 'DRIVER' && currentUser && isOnline) {
+      const updateLocation = () => {
+        navigator.geolocation.getCurrentPosition(async (pos) => {
+          await supabase.from('user_locations').upsert({
+            user_id: currentUser.id,
+            email: currentUser.email,
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'email' });
+        });
+      };
+
+      updateLocation();
+      const interval = setInterval(updateLocation, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [authRole, currentUser, isOnline]);
 
   const fetchData = useCallback(async () => {
     if (!currentUser) return;
@@ -124,7 +137,7 @@ const App: React.FC = () => {
       if (notificationsRes.data) setNotifications(notificationsRes.data);
       if (servicesRes.data) setRoadServices(servicesRes.data);
     } catch (error) {
-      console.warn("Isolamento offline.");
+      console.warn("Modo Offline");
     }
   }, [isOnline, currentUser]);
 
@@ -158,7 +171,7 @@ const App: React.FC = () => {
       await fetchData();
     } catch (error: any) {
       console.error(error);
-      alert(`Erro: ${error.message || 'Falha na operação'}`);
+      alert(`Erro: ${error.message}`);
     } finally {
       setIsSaving(false);
     }
@@ -225,7 +238,7 @@ const App: React.FC = () => {
               <input type="password" placeholder="Senha" className={`w-full p-6 rounded-3xl font-bold outline-none ${isDriverContext ? 'bg-slate-50 text-slate-900' : 'bg-white/5 text-white'}`} value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} />
             </div>
             <button onClick={handleLogin} disabled={isLoggingIn} className={`w-full py-6 rounded-3xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all text-white ${isDriverContext ? 'bg-primary-600' : 'bg-amber-600'}`}>
-              {isLoggingIn ? <Loader2 className="animate-spin" /> : 'Acessar'}
+              {isLoggingIn ? <Loader2 className="animate-spin" /> : 'Entrar'}
             </button>
           </div>
         </div>

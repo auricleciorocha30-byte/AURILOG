@@ -232,6 +232,17 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
                     <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-primary-500"></div><h4 className="text-sm font-black text-slate-700 truncate uppercase">{trip.origin}</h4></div>
                     <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-rose-500"></div><h4 className="text-sm font-black text-slate-700 truncate uppercase">{trip.destination}</h4></div>
                   </div>
+                  
+                  <div className="mt-4 p-3 bg-slate-50 rounded-2xl flex justify-between items-center">
+                    <div>
+                      <p className="text-[8px] font-black uppercase text-slate-400">Frete Bruto</p>
+                      <p className="text-sm font-black text-slate-900">R$ {trip.agreed_price.toLocaleString()}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[8px] font-black uppercase text-primary-400">Comissão ({trip.driver_commission_percentage}%)</p>
+                      <p className="text-sm font-black text-primary-600">R$ {trip.driver_commission.toLocaleString()}</p>
+                    </div>
+                  </div>
                </div>
             </div>
             <div className="mt-6 relative">
@@ -326,6 +337,20 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
                     <button type="button" onClick={suggestANTTPrice} className="text-[8px] font-black uppercase bg-amber-100 text-amber-700 px-2 py-1 rounded-md flex items-center gap-1 hover:bg-amber-200"><Calculator size={10}/> Sugerir ANTT</button>
                   </div>
                   <input type="number" className="w-full p-5 bg-slate-50 rounded-2xl font-black text-2xl text-primary-600 outline-none" value={formData.agreed_price || ''} onChange={e => setFormData({...formData, agreed_price: Number(e.target.value)})} />
+                </div>
+              </div>
+
+              {/* CAMPO DE COMISSÃO RESTAURADO */}
+              <div className="bg-primary-50 p-6 rounded-[2.5rem] border border-primary-100 flex flex-col md:flex-row items-center justify-between gap-6">
+                <div className="flex-1 space-y-2 w-full">
+                  <label className="text-[10px] font-black uppercase text-primary-600 ml-1 flex items-center gap-2">
+                    <Percent size={14}/> Comissão do Motorista (%)
+                  </label>
+                  <input type="number" className="w-full p-4 bg-white rounded-2xl font-black text-xl outline-none border-none" value={formData.driver_commission_percentage} onChange={e => setFormData({...formData, driver_commission_percentage: Number(e.target.value)})} />
+                </div>
+                <div className="text-center md:text-right shrink-0">
+                  <p className="text-[10px] font-black uppercase text-slate-400">Total a Pagar</p>
+                  <p className="text-3xl font-black text-primary-600">R$ {calculatedCommission.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                 </div>
               </div>
 
