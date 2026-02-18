@@ -31,7 +31,8 @@ import {
   ChevronRight,
   Wifi,
   WifiOff,
-  Navigation
+  Navigation,
+  Download
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -78,10 +79,32 @@ const App: React.FC = () => {
   const [isGpsActive, setIsGpsActive] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  
+  // Estado para PWA Install Prompt
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
 
   const [jornadaMode, setJornadaMode] = useState<'IDLE' | 'DRIVING' | 'RESTING'>('IDLE');
   const [jornadaStartTime, setJornadaStartTime] = useState<number | null>(null);
   const [jornadaCurrentTime, setJornadaCurrentTime] = useState(0);
+
+  // Captura evento de instalação PWA
+  useEffect(() => {
+    const handler = (e: any) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setInstallPrompt(null);
+    }
+  };
 
   // Rastreamento de Localização (Apenas para Motoristas)
   useEffect(() => {
@@ -183,7 +206,7 @@ const App: React.FC = () => {
 
   useEffect(() => { if (currentUser) fetchData(); }, [fetchData, currentUser]);
 
-  // --- GERAÇÃO DE NOTIFICAÇÕES AUTOMÁTICAS DO SISTEMA ---
+  // --- GERAÇÃO DE NOTIFICAÇÕES AUTOMÁTICAS DO SISTEMA (SININHO INTELIGENTE) ---
   const systemNotifications = useMemo(() => {
     const alerts: DbNotification[] = [];
     const today = new Date();
@@ -191,7 +214,7 @@ const App: React.FC = () => {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    // 1. Alertas de Viagem (Próximas 48h)
+    // 1. Alertas de Viagem (Hoje e Amanhã)
     trips.forEach(t => {
       if (t.status === TripStatus.SCHEDULED) {
         const tripDate = new Date(t.date + 'T00:00:00');
@@ -200,11 +223,11 @@ const App: React.FC = () => {
           alerts.push({
             id: `sys-trip-${t.id}`,
             title: isTomorrow ? 'Viagem Amanhã' : 'Viagem Hoje',
-            message: `Preparar para: ${t.origin.split('-')[0]} ➔ ${t.destination.split('-')[0]}`,
+            message: `Preparar: ${t.origin.split('-')[0]} ➔ ${t.destination.split('-')[0]}`,
             type: 'INFO',
             category: 'TRIP',
             created_at: new Date().toISOString(),
-            sender: 'Sistema AuriLog'
+            sender: 'Assistente de Viagem'
           });
         }
       }
@@ -220,7 +243,7 @@ const App: React.FC = () => {
           alerts.push({
             id: `sys-exp-late-${e.id}`,
             title: 'Conta em Atraso',
-            message: `${e.description} venceu em ${new Date(e.due_date).toLocaleDateString()}. Valor: R$ ${e.amount}`,
+            message: `${e.description} venceu em ${new Date(e.due_date).toLocaleDateString()}. R$ ${e.amount}`,
             type: 'URGENT',
             category: 'FINANCE',
             created_at: new Date().toISOString(),
@@ -230,7 +253,7 @@ const App: React.FC = () => {
            alerts.push({
             id: `sys-exp-today-${e.id}`,
             title: 'Vence Hoje',
-            message: `Pagamento pendente: ${e.description}. Valor: R$ ${e.amount}`,
+            message: `Pagamento pendente: ${e.description}. R$ ${e.amount}`,
             type: 'WARNING',
             category: 'FINANCE',
             created_at: new Date().toISOString(),
@@ -251,7 +274,7 @@ const App: React.FC = () => {
              alerts.push({
                 id: `sys-maint-${m.id}`,
                 title: 'Manutenção Próxima',
-                message: `${m.part_name} no veículo ${vehicle.plate} vence em ${kmLeft} KM.`,
+                message: `${m.part_name} (${vehicle.plate}) vence em ${kmLeft} KM.`,
                 type: 'WARNING',
                 category: 'MAINTENANCE',
                 created_at: new Date().toISOString(),
@@ -261,7 +284,7 @@ const App: React.FC = () => {
              alerts.push({
                 id: `sys-maint-over-${m.id}`,
                 title: 'Manutenção Vencida',
-                message: `${m.part_name} no veículo ${vehicle.plate} excedeu o KM limite.`,
+                message: `${m.part_name} (${vehicle.plate}) excedeu o limite.`,
                 type: 'URGENT',
                 category: 'MAINTENANCE',
                 created_at: new Date().toISOString(),
@@ -276,8 +299,11 @@ const App: React.FC = () => {
 
   // Combina notificações do banco (filtrando as excluídas) com as do sistema
   const activeNotifications = useMemo(() => {
+    // Filtra comunicados do banco que o usuário já "apagou"
     const visibleDbNotifications = dbNotifications.filter(n => !dismissedNotificationIds.includes(n.id));
-    // Notificações de sistema aparecem primeiro se forem urgentes
+    
+    // Junta com os alertas automáticos do sistema (esses não são salvos no banco, são gerados na hora)
+    // Ordena: Urgentes primeiro, depois por data
     return [...systemNotifications, ...visibleDbNotifications].sort((a, b) => {
        if (a.type === 'URGENT' && b.type !== 'URGENT') return -1;
        if (b.type === 'URGENT' && a.type !== 'URGENT') return 1;
@@ -318,19 +344,19 @@ const App: React.FC = () => {
   };
 
   const handleDismissNotification = async (id: string) => {
-    // Se for notificação de sistema, não salvamos no banco/storage pois ela recria se a condição persistir
-    if (id.startsWith('sys-')) {
-      // Apenas forçamos um re-render removendo visualmente (na proxima verificação ela volta se o problema nao for resolvido)
-      // Mas para UX imediata, podemos ignorar ou implementar um "snooze".
-      // Aqui vamos apenas ignorar para sistema (elas somem resolvendo a pendencia) 
-      // ou podemos adicionar a uma lista temporária de sessão.
-      return; 
+    // Se for notificação de sistema (começa com 'sys-'), apenas removemos visualmente da lista ativa
+    // (na prática, ela só sumirá definitivamente se o usuário resolver a pendência, ex: pagar a conta)
+    // Mas para comunicados do banco (Admin), salvamos no localStorage para nunca mais mostrar
+    
+    if (!id.startsWith('sys-')) {
+        const newDismissed = [...dismissedNotificationIds, id];
+        setDismissedNotificationIds(newDismissed);
+        localStorage.setItem('aurilog_dismissed_notifications', JSON.stringify(newDismissed));
     }
-
-    // Para notificações do banco (Comunicados), salvamos o ID para nunca mais mostrar
-    const newDismissed = [...dismissedNotificationIds, id];
-    setDismissedNotificationIds(newDismissed);
-    localStorage.setItem('aurilog_dismissed_notifications', JSON.stringify(newDismissed));
+    
+    // Força atualização removendo da lista atual (para UX imediata)
+    // Para alertas de sistema, se a condição persistir, ele volta na próxima renderização ou login
+    // Para comunicados, o filtro 'activeNotifications' garantirá que não volte.
   };
 
   if (!authRole) {
@@ -400,6 +426,15 @@ const App: React.FC = () => {
           <NavItem view={AppView.STATIONS} icon={MapPinned} label="Radar" />
         </div>
         <div className="mt-6 pt-6 border-t space-y-4 safe-bottom">
+          {installPrompt && (
+            <button 
+              onClick={handleInstallClick} 
+              className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase bg-slate-900 text-white hover:bg-black transition-all shadow-lg animate-pulse"
+            >
+              <Download size={20} /> Instalar Aplicativo
+            </button>
+          )}
+
           <div className="px-6 py-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between">
              <div className="flex items-center gap-2">
                 <Navigation size={14} className={isGpsActive ? 'text-emerald-500' : 'text-slate-300'} />
@@ -409,7 +444,7 @@ const App: React.FC = () => {
           </div>
           <button onClick={() => setShowNotifications(true)} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase text-slate-500 hover:bg-slate-100 transition-all relative">
             <Bell size={20} /> Notificações
-            {activeNotifications.length > 0 && <span className="absolute top-4 left-10 w-2 h-2 bg-rose-500 rounded-full"></span>}
+            {activeNotifications.length > 0 && <span className="absolute top-4 left-10 w-2 h-2 bg-rose-500 rounded-full animate-pulse"></span>}
           </button>
           <button onClick={handleLogout} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase text-rose-500 hover:bg-rose-50 transition-all"><LogOut size={20} /> Sair</button>
         </div>
@@ -429,7 +464,7 @@ const App: React.FC = () => {
             </div>
             <button onClick={() => setShowNotifications(true)} className="p-3 bg-slate-50 rounded-xl text-slate-500 relative">
               <Bell size={24}/>
-              {activeNotifications.length > 0 && <span className="absolute top-3 right-3 w-2 h-2 bg-rose-500 rounded-full border-2 border-white"></span>}
+              {activeNotifications.length > 0 && <span className="absolute top-3 right-3 w-2 h-2 bg-rose-500 rounded-full border-2 border-white animate-pulse"></span>}
             </button>
           </div>
         </div>
