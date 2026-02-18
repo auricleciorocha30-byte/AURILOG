@@ -33,7 +33,8 @@ import {
   Filter,
   X,
   Plus,
-  User
+  User,
+  History
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { RoadService, DbNotification, UserLocation, Trip, Expense, Vehicle, MaintenanceItem, Driver, TripStatus, CargoCategory } from '../types';
@@ -46,6 +47,7 @@ interface AdminPanelProps {
 export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) => {
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'DRIVERS' | 'FLEET' | 'PARTNERS' | 'TRACKING' | 'ALERTS' | 'CONFIG'>('OVERVIEW');
   const [loading, setLoading] = useState(false);
+  const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
   
   // Dados Consolidados
   const [allTrips, setAllTrips] = useState<Trip[]>([]);
@@ -64,7 +66,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
   const [categoryName, setCategoryName] = useState('');
   const [showCategoryModal, setShowCategoryModal] = useState(false);
 
-  useEffect(() => { loadAllAdminData(); }, []);
+  useEffect(() => { 
+    loadAllAdminData();
+    // Refresh automático de localizações a cada 30s se estiver na aba de rastreamento
+    const interval = setInterval(() => {
+      if (activeTab === 'TRACKING') refreshLocations();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [activeTab]);
 
   const loadAllAdminData = async () => {
     setLoading(true);
@@ -95,44 +104,56 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
     }
   };
 
+  const refreshLocations = async () => {
+    const { data } = await supabase.from('user_locations').select('*');
+    if (data) setLocations(data);
+  };
+
   const totals = useMemo(() => {
     const revenue = allTrips.filter(t => t.status === TripStatus.COMPLETED).reduce((acc, t) => acc + (Number(t.agreed_price) || 0), 0);
     const tripExp = allExpenses.filter(e => e.trip_id).reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
     const fixedExp = allExpenses.filter(e => !e.trip_id).reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
+    const maintenanceCosts = allMaintenance.reduce((acc, m) => acc + (Number(m.cost) || 0), 0);
     const commissions = allTrips.filter(t => t.status === TripStatus.COMPLETED).reduce((acc, t) => acc + (Number(t.driver_commission) || 0), 0);
     
-    const profit = revenue - tripExp - fixedExp - commissions;
-    return { revenue, expense: tripExp + fixedExp, profit, fleet: allVehicles.length, drivers: drivers.length };
-  }, [allTrips, allExpenses, allVehicles, drivers]);
+    const totalExp = tripExp + fixedExp + maintenanceCosts;
+    const profit = revenue - totalExp - commissions;
+    return { revenue, expense: totalExp, profit, fleet: allVehicles.length, drivers: drivers.length };
+  }, [allTrips, allExpenses, allVehicles, allMaintenance, drivers]);
 
-  // Performance por motorista para o Dashboard (Overview)
+  // Performance por motorista (Dashboard)
   const performanceByDriver = useMemo(() => {
-    const map = new Map<string, { name: string, email: string, revenue: number, expense: number, trips: number }>();
+    const map = new Map<string, { id: string, name: string, email: string, revenue: number, expense: number, trips: number, profit: number }>();
     
     drivers.forEach(d => {
-      map.set(d.id, { name: d.name, email: d.email, revenue: 0, expense: 0, trips: 0 });
+      map.set(d.id, { id: d.id, name: d.name, email: d.email, revenue: 0, expense: 0, trips: 0, profit: 0 });
     });
 
     allTrips.forEach(t => {
       if (t.status === TripStatus.COMPLETED && t.user_id) {
-        const stats = map.get(t.user_id) || { name: 'Sistema', email: 'admin@aurilog.com', revenue: 0, expense: 0, trips: 0 };
-        stats.revenue += (Number(t.agreed_price) || 0);
-        stats.trips += 1;
-        map.set(t.user_id || 'admin', stats);
+        const stats = map.get(t.user_id);
+        if (stats) {
+          stats.revenue += (Number(t.agreed_price) || 0);
+          stats.trips += 1;
+          stats.profit -= (Number(t.driver_commission) || 0);
+        }
       }
     });
 
     allExpenses.forEach(e => {
       if (e.user_id) {
-        const stats = map.get(e.user_id) || { name: 'Sistema', email: 'admin@aurilog.com', revenue: 0, expense: 0, trips: 0 };
-        stats.expense += (Number(e.amount) || 0);
-        map.set(e.user_id || 'admin', stats);
+        const stats = map.get(e.user_id);
+        if (stats) stats.expense += (Number(e.amount) || 0);
       }
     });
 
-    return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue);
+    return Array.from(map.values()).map(s => ({
+      ...s,
+      profit: s.revenue - s.expense
+    })).sort((a, b) => b.revenue - a.revenue);
   }, [drivers, allTrips, allExpenses]);
 
+  // CRUD Functions
   const handleAddCategory = async () => {
     if (!categoryName.trim()) return;
     setLoading(true);
@@ -167,13 +188,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
     } catch (err: any) { alert(err.message); } finally { setLoading(false); }
   };
 
-  const deleteRecord = async (table: string, id: string) => {
-    if (!confirm("Confirmar exclusão?")) return;
+  const handleAddDriver = async (e: React.FormEvent) => {
+    e.preventDefault();
     setLoading(true);
     try {
-      const { error } = await supabase.from(table).delete().eq('id', id);
+      const { error } = await supabase.from('drivers').insert([driverForm]);
       if (error) throw error;
+      setDriverForm({ name: '', email: '', password: '' });
       loadAllAdminData();
+      alert("Motorista cadastrado com sucesso!");
     } catch (err: any) { alert(err.message); } finally { setLoading(false); }
   };
 
@@ -191,7 +214,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
       }]);
       if (error) throw error;
       setAlertForm({ title: '', message: '', target_user_email: '', type: 'INFO', category: 'GENERAL' });
-      alert("Comunicado enviado com sucesso!");
+      alert("Comunicado enviado!");
+    } catch (err: any) { alert(err.message); } finally { setLoading(false); }
+  };
+
+  const deleteRecord = async (table: string, id: string) => {
+    if (!confirm("Confirmar exclusão?")) return;
+    setLoading(true);
+    try {
+      const { error } = await supabase.from(table).delete().eq('id', id);
+      if (error) throw error;
+      loadAllAdminData();
     } catch (err: any) { alert(err.message); } finally { setLoading(false); }
   };
 
@@ -207,13 +240,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
     link.click();
   };
 
-  // Mapeia motoristas com suas localizações - Garantindo que todos os motoristas cadastrados apareçam
+  // Mapeia motoristas com suas localizações
   const driversWithLocations = useMemo(() => {
     return drivers.map(d => {
       const loc = locations.find(l => l.user_id === d.id || l.email === d.email);
       return { ...d, location: loc };
     });
   }, [drivers, locations]);
+
+  const selectedDriverData = useMemo(() => {
+    if (!selectedDriverId) return null;
+    return driversWithLocations.find(d => d.id === selectedDriverId);
+  }, [selectedDriverId, driversWithLocations]);
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
@@ -266,37 +304,37 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                    <p className="text-3xl font-black mt-2">{formatCurrency(totals.revenue)}</p>
                 </div>
                 <div className="bg-slate-900 p-8 rounded-[3rem] border border-white/5">
-                   <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Gasto Total</p>
+                   <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Gasto Global</p>
                    <p className="text-3xl font-black mt-2 text-rose-400">{formatCurrency(totals.expense)}</p>
                 </div>
                 <div className="bg-slate-900 p-8 rounded-[3rem] border border-amber-500/20 shadow-2xl shadow-amber-500/5">
-                   <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Lucro Líquido</p>
+                   <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Lucro Real</p>
                    <p className="text-3xl font-black mt-2">{formatCurrency(totals.profit)}</p>
                 </div>
                 <div className="bg-slate-900 p-8 rounded-[3rem] border border-white/5">
-                   <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Ativos</p>
-                   <p className="text-3xl font-black mt-2">{totals.drivers} Condutores</p>
+                   <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Rede Ativa</p>
+                   <p className="text-3xl font-black mt-2">{totals.drivers} Motoristas</p>
                 </div>
              </div>
 
              <div className="bg-white/5 p-10 rounded-[4rem] border border-white/10">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
-                   <h3 className="text-2xl font-black uppercase tracking-tight flex items-center gap-3"><ReceiptText className="text-amber-500"/> Performance por Condutor</h3>
-                   <button onClick={exportData} className="flex items-center gap-2 px-6 py-3 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest"><Download size={16}/> Exportar Relatório</button>
+                   <h3 className="text-2xl font-black uppercase tracking-tight flex items-center gap-3"><ReceiptText className="text-amber-500"/> Performance Financeira</h3>
+                   <button onClick={exportData} className="flex items-center gap-2 px-6 py-3 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest"><Download size={16}/> Exportar Dados</button>
                 </div>
                 <div className="space-y-4">
                    <div className="hidden md:grid grid-cols-5 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest pb-2">
-                      <div className="col-span-2">Motorista / E-mail</div>
-                      <div>Viagens</div>
-                      <div>Receita</div>
-                      <div className="text-right">Lucratividade</div>
+                      <div className="col-span-2">Condutor / Identificação</div>
+                      <div>Viagens Realizadas</div>
+                      <div>Faturamento</div>
+                      <div className="text-right">Lucro Gerado</div>
                    </div>
                    {performanceByDriver.length === 0 ? (
                       <div className="text-center py-20 bg-slate-900/50 rounded-3xl border border-white/5">
-                         <p className="text-slate-500 text-xs font-black uppercase tracking-[0.2em]">Nenhum dado de movimentação encontrado.</p>
+                         <p className="text-slate-500 text-xs font-black uppercase tracking-[0.2em]">Sem movimentação registrada.</p>
                       </div>
                    ) : performanceByDriver.map(stats => (
-                      <div key={stats.email} className="p-6 bg-slate-900/50 rounded-3xl grid grid-cols-1 md:grid-cols-5 gap-4 items-center border border-white/5 hover:border-amber-500/30 transition-all">
+                      <div key={stats.id} className="p-6 bg-slate-900/50 rounded-3xl grid grid-cols-1 md:grid-cols-5 gap-4 items-center border border-white/5 hover:border-amber-500/30 transition-all">
                          <div className="col-span-2 flex items-center gap-4">
                             <div className="w-10 h-10 rounded-2xl bg-white/5 flex items-center justify-center font-black text-amber-500">{stats.name[0]}</div>
                             <div>
@@ -313,9 +351,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                             <span className="font-black text-sm">{formatCurrency(stats.revenue)}</span>
                          </div>
                          <div className="flex md:block items-center justify-between md:text-right">
-                            <span className="md:hidden text-[9px] font-bold text-slate-500 uppercase">Líquido:</span>
-                            <span className={`font-black text-sm ${stats.revenue - stats.expense > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                               {formatCurrency(stats.revenue - stats.expense)}
+                            <span className="md:hidden text-[9px] font-bold text-slate-500 uppercase">Lucro:</span>
+                            <span className={`font-black text-sm ${stats.profit > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                               {formatCurrency(stats.profit)}
                             </span>
                          </div>
                       </div>
@@ -326,44 +364,105 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
         )}
 
         {activeTab === 'TRACKING' && (
-           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-fade-in h-[700px]">
-              <div className="bg-white/5 p-8 rounded-[4rem] border border-white/10 flex flex-col">
-                 <h3 className="text-xl font-black uppercase mb-8 flex items-center gap-3"><Users className="text-amber-500"/> Equipe Registrada</h3>
+           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-fade-in h-[750px]">
+              <div className="bg-white/5 p-8 rounded-[4rem] border border-white/10 flex flex-col h-full">
+                 <div className="flex justify-between items-center mb-8">
+                    <h3 className="text-xl font-black uppercase flex items-center gap-3"><Users className="text-amber-500"/> Equipe Logada</h3>
+                    <button onClick={refreshLocations} className="p-2 bg-white/5 rounded-xl text-slate-500 hover:text-white"><RefreshCcw size={16}/></button>
+                 </div>
                  <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
                     {driversWithLocations.length === 0 ? (
                        <div className="text-center py-20 flex flex-col items-center">
                           <Users size={48} className="text-slate-800 mb-4" />
-                          <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Nenhum motorista cadastrado.</p>
+                          <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Nenhum condutor encontrado.</p>
                        </div>
                     ) : driversWithLocations.map(driver => (
-                       <div key={driver.id} className={`p-5 bg-slate-900 border border-white/5 rounded-3xl flex justify-between items-center transition-all ${driver.location ? 'border-amber-500/20 shadow-lg shadow-amber-500/5' : 'opacity-60'}`}>
+                       <div 
+                         key={driver.id} 
+                         onClick={() => setSelectedDriverId(driver.id)}
+                         className={`p-5 bg-slate-900 border cursor-pointer rounded-3xl flex justify-between items-center transition-all ${selectedDriverId === driver.id ? 'border-amber-500 ring-2 ring-amber-500/20' : 'border-white/5 hover:border-white/20'}`}
+                       >
                           <div className="flex-1 overflow-hidden">
                              <div className="flex items-center gap-2">
                                 <p className="text-sm font-black uppercase truncate tracking-tighter">{driver.name}</p>
                                 {driver.location ? <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_#10b981]"></span> : <span className="w-2 h-2 bg-slate-700 rounded-full"></span>}
                              </div>
                              <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1">
-                                {driver.location ? `Visto: ${new Date(driver.location.updated_at).toLocaleTimeString()}` : 'Sem sinal de GPS'}
+                                {driver.location ? `Última conexão: ${new Date(driver.location.updated_at).toLocaleTimeString()}` : 'Sem rastreio ativo'}
                              </p>
                           </div>
-                          {driver.location && (
-                             <button className="p-3 bg-amber-500 text-slate-950 rounded-xl hover:scale-110 active:scale-90 transition-all shadow-lg shadow-amber-500/20">
-                                <MapPin size={16}/>
-                             </button>
-                          )}
+                          {driver.location && <MapPin size={16} className={selectedDriverId === driver.id ? 'text-amber-500' : 'text-slate-600'}/>}
                        </div>
                     ))}
                  </div>
               </div>
-              <div className="lg:col-span-2 bg-white/5 rounded-[4rem] border border-white/10 overflow-hidden relative">
-                 <div className="absolute inset-0 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm z-10 pointer-events-none">
+              <div className="lg:col-span-2 bg-white/5 rounded-[4rem] border border-white/10 overflow-hidden relative group">
+                 <div className={`absolute inset-0 flex items-center justify-center bg-slate-950/40 backdrop-blur-sm z-10 transition-all pointer-events-none ${selectedDriverId ? 'opacity-0' : 'opacity-100'}`}>
                     <div className="text-center p-10 bg-slate-950/80 rounded-3xl border border-white/10 max-w-sm backdrop-blur-xl">
-                       <MapPinned size={48} className="text-amber-500 mx-auto mb-4" />
-                       <h4 className="text-lg font-black uppercase mb-2 tracking-tighter">Live Monitor</h4>
-                       <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest leading-relaxed">Localização em tempo real de {locations.length} condutores ativos.</p>
+                       <Radar size={48} className="text-amber-500 mx-auto mb-4 animate-pulse" />
+                       <h4 className="text-lg font-black uppercase mb-2 tracking-tighter">Radar de Frota</h4>
+                       <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest leading-relaxed">Selecione um motorista ao lado para visualizar o ponto exato no mapa satélite.</p>
                     </div>
                  </div>
-                 <iframe title="Map" className="w-full h-full border-0 opacity-30 grayscale invert" src="https://www.google.com/maps/embed?pb=!1m14!1m12!1m3!1d15000000!2d-50!3d-15!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!5e0!3m2!1sen!2sbr!4v1" />
+                 
+                 {selectedDriverData?.location ? (
+                    <iframe 
+                      title="Live Tracking" 
+                      className="w-full h-full border-0 grayscale invert opacity-60" 
+                      src={`https://maps.google.com/maps?q=${selectedDriverData.location.latitude},${selectedDriverData.location.longitude}&z=15&output=embed`} 
+                    />
+                 ) : (
+                    <iframe title="Map Background" className="w-full h-full border-0 grayscale invert opacity-10" src="https://www.google.com/maps/embed?pb=!1m14!1m12!1m3!1d15000000!2d-50!3d-15!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!5e0!3m2!1sen!2sbr!4v1" />
+                 )}
+
+                 {selectedDriverData && (
+                    <div className="absolute bottom-8 left-8 right-8 bg-slate-950/90 backdrop-blur-xl border border-white/10 p-6 rounded-[2.5rem] flex items-center justify-between z-20 animate-slide-up">
+                       <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 bg-amber-500 rounded-2xl flex items-center justify-center font-black text-slate-950">{selectedDriverData.name[0]}</div>
+                          <div>
+                             <h4 className="font-black text-sm uppercase">{selectedDriverData.name}</h4>
+                             <p className="text-[10px] text-amber-500 font-bold uppercase">{selectedDriverData.location ? `Lat: ${selectedDriverData.location.latitude.toFixed(4)} | Long: ${selectedDriverData.location.longitude.toFixed(4)}` : 'Localização indisponível'}</p>
+                          </div>
+                       </div>
+                       <div className="flex gap-2">
+                          <button onClick={() => window.open(`https://www.google.com/maps?q=${selectedDriverData.location?.latitude},${selectedDriverData.location?.longitude}`, '_blank')} className="p-3 bg-white/5 rounded-xl text-white hover:bg-white/10 transition-all"><ExternalLink size={20}/></button>
+                          <button onClick={() => setSelectedDriverId(null)} className="p-3 bg-white/5 rounded-xl text-slate-500 hover:text-white"><X size={20}/></button>
+                       </div>
+                    </div>
+                 )}
+              </div>
+           </div>
+        )}
+
+        {activeTab === 'DRIVERS' && (
+           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fade-in">
+              <div className="bg-white/5 p-10 rounded-[4rem] border border-white/10">
+                 <h3 className="text-2xl font-black mb-8 uppercase flex items-center gap-3 tracking-tighter"><UserPlus className="text-amber-500" size={28}/> Novo Cadastro de Equipe</h3>
+                 <form onSubmit={handleAddDriver} className="space-y-6">
+                    <input required placeholder="Nome Completo do Condutor" className="w-full p-6 bg-slate-900 rounded-3xl border-none outline-none font-bold text-white focus:ring-2 focus:ring-amber-500/50" value={driverForm.name} onChange={e => setDriverForm({...driverForm, name: e.target.value})} />
+                    <input required type="email" placeholder="E-mail Corporativo" className="w-full p-6 bg-slate-900 rounded-3xl border-none outline-none font-bold text-white focus:ring-2 focus:ring-amber-500/50" value={driverForm.email} onChange={e => setDriverForm({...driverForm, email: e.target.value})} />
+                    <input required type="password" placeholder="Definir Chave de Acesso" className="w-full p-6 bg-slate-900 rounded-3xl border-none outline-none font-bold text-white focus:ring-2 focus:ring-amber-500/50" value={driverForm.password} onChange={e => setDriverForm({...driverForm, password: e.target.value})} />
+                    <button type="submit" disabled={loading} className="w-full py-6 bg-amber-500 text-slate-950 rounded-3xl font-black uppercase text-xs shadow-2xl active:scale-95 transition-all">
+                       {loading ? <Loader2 className="animate-spin mx-auto"/> : 'Cadastrar e Liberar Portal'}
+                    </button>
+                 </form>
+              </div>
+              <div className="bg-white/5 p-10 rounded-[4rem] border border-white/10">
+                 <h3 className="text-2xl font-black mb-8 uppercase tracking-tighter">Condutores Ativos</h3>
+                 <div className="space-y-4 max-h-[500px] overflow-y-auto pr-4 custom-scrollbar">
+                    {drivers.map(d => (
+                       <div key={d.id} className="p-6 bg-slate-900/50 border border-white/5 rounded-3xl flex justify-between items-center group hover:border-white/10 transition-all">
+                          <div className="flex items-center gap-4">
+                             <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center font-black text-amber-500 uppercase">{d.name[0]}</div>
+                             <div>
+                                <p className="text-sm font-black uppercase tracking-tighter">{d.name}</p>
+                                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{d.email}</p>
+                             </div>
+                          </div>
+                          <button onClick={() => deleteRecord('drivers', d.id)} className="p-3 text-slate-500 hover:text-rose-500 transition-all opacity-0 group-hover:opacity-100"><Trash2 size={20}/></button>
+                       </div>
+                    ))}
+                 </div>
               </div>
            </div>
         )}
@@ -372,90 +471,102 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
           <div className="bg-white/5 p-10 rounded-[4rem] border border-white/10 animate-fade-in">
              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
                 <h3 className="text-2xl font-black uppercase tracking-tight flex items-center gap-3"><Truck className="text-amber-500"/> Inventário de Frota</h3>
-                <span className="bg-white/5 px-6 py-2 rounded-full text-[10px] font-black text-slate-400 uppercase tracking-widest">{allVehicles.length} Veículos Registrados</span>
+                <span className="bg-white/5 px-6 py-2 rounded-full text-[10px] font-black text-slate-400 uppercase tracking-widest">{allVehicles.length} Unidades Registradas</span>
              </div>
-             {loading ? (
-                <div className="py-20 flex flex-col items-center gap-4">
-                   <Loader2 className="animate-spin text-amber-500" size={40} />
-                   <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Carregando dados da frota...</p>
-                </div>
-             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                   {allVehicles.length === 0 ? (
-                     <div className="col-span-full py-20 text-center text-slate-500 bg-slate-900/50 rounded-[3rem] border border-white/5">
-                       <Truck size={48} className="mx-auto mb-4 text-slate-800" />
-                       <p className="text-xs font-black uppercase tracking-[0.3em]">Nenhum veículo cadastrado na frota.</p>
-                     </div>
-                   ) : allVehicles.map(v => (
-                      <div key={v.id} className="p-8 bg-slate-900 border border-white/5 rounded-[3rem] group hover:border-amber-500/50 transition-all shadow-xl">
-                         <div className="flex justify-between items-start mb-6">
-                            <div className="p-4 bg-white/5 text-amber-500 rounded-2xl"><Truck size={28}/></div>
-                            <span className="bg-white text-slate-950 px-4 py-1.5 rounded-xl text-xs font-black uppercase tracking-widest shadow-md">{v.plate}</span>
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {allVehicles.map(v => (
+                   <div key={v.id} className="p-8 bg-slate-900 border border-white/5 rounded-[3rem] group hover:border-amber-500/50 transition-all shadow-xl">
+                      <div className="flex justify-between items-start mb-6">
+                         <div className="p-4 bg-white/5 text-amber-500 rounded-2xl"><Truck size={28}/></div>
+                         <span className="bg-white text-slate-950 px-4 py-1.5 rounded-xl text-xs font-black uppercase tracking-widest shadow-md">{v.plate}</span>
+                      </div>
+                      <h4 className="text-lg font-black uppercase tracking-tighter">{v.model}</h4>
+                      <p className="text-slate-500 font-bold text-[10px] mt-1 uppercase tracking-widest">{v.year}</p>
+                      <div className="mt-6 grid grid-cols-2 gap-3">
+                         <div className="bg-white/5 p-4 rounded-2xl">
+                            <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Km Rodados</p>
+                            <p className="text-base font-black text-white">{v.current_km.toLocaleString()} KM</p>
                          </div>
-                         <h4 className="text-lg font-black uppercase tracking-tighter">{v.model}</h4>
-                         <p className="text-slate-500 font-bold text-[10px] mt-1 uppercase tracking-widest">{v.year}</p>
-                         <div className="mt-6 grid grid-cols-2 gap-3">
-                            <div className="bg-white/5 p-4 rounded-2xl">
-                               <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Odômetro</p>
-                               <p className="text-base font-black text-white">{v.current_km.toLocaleString()} KM</p>
-                            </div>
-                            <div className="bg-white/5 p-4 rounded-2xl">
-                               <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Configuração</p>
-                               <p className="text-base font-black text-white">{v.axles || 2} Eixos</p>
-                            </div>
-                         </div>
-                         <div className="mt-4 flex gap-2">
-                            <button onClick={() => deleteRecord('vehicles', v.id)} className="w-full py-3 bg-rose-500/10 text-rose-500 rounded-2xl text-[8px] font-black uppercase tracking-widest hover:bg-rose-500 hover:text-white transition-all">Excluir Registro</button>
+                         <div className="bg-white/5 p-4 rounded-2xl">
+                            <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Eixos</p>
+                            <p className="text-base font-black text-white">{v.axles || 2}</p>
                          </div>
                       </div>
-                   ))}
-                </div>
-             )}
+                      <button onClick={() => deleteRecord('vehicles', v.id)} className="w-full mt-6 py-3 bg-rose-500/10 text-rose-500 rounded-2xl text-[8px] font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-all">Excluir Veículo</button>
+                   </div>
+                ))}
+             </div>
           </div>
+        )}
+
+        {activeTab === 'PARTNERS' && (
+           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fade-in">
+              <div className="bg-white/5 p-10 rounded-[4rem] border border-white/10">
+                 <h3 className="text-2xl font-black mb-8 uppercase tracking-tight flex items-center gap-3"><Store className="text-amber-500"/> Nova Parceria / Radar</h3>
+                 <form onSubmit={handleAddPartner} className="space-y-6">
+                    <input required placeholder="Nome do Estabelecimento" className="w-full p-6 bg-slate-900 rounded-3xl border-none outline-none font-bold text-white focus:ring-2 focus:ring-amber-500/50" value={partnerForm.name} onChange={e => setPartnerForm({...partnerForm, name: e.target.value})} />
+                    <select className="w-full p-6 bg-slate-900 rounded-3xl border-none outline-none font-black uppercase text-[10px] text-white focus:ring-2 focus:ring-amber-500/50" value={partnerForm.type} onChange={e => setPartnerForm({...partnerForm, type: e.target.value})}>
+                       <option>Posto de Combustível</option>
+                       <option>Oficina Diesel</option>
+                       <option>Borracharia</option>
+                       <option>Restaurante / Parada</option>
+                       <option>Pátio / Descanso</option>
+                    </select>
+                    <input required placeholder="Endereço ou Rodovia KM" className="w-full p-6 bg-slate-900 rounded-3xl border-none outline-none font-bold text-white" value={partnerForm.address} onChange={e => setPartnerForm({...partnerForm, address: e.target.value})} />
+                    <input placeholder="URL do Google Maps (Opcional)" className="w-full p-6 bg-slate-900 rounded-3xl border-none outline-none font-bold text-white" value={partnerForm.location_url} onChange={e => setPartnerForm({...partnerForm, location_url: e.target.value})} />
+                    <button type="submit" disabled={loading} className="w-full py-6 bg-amber-500 text-slate-950 rounded-3xl font-black uppercase text-xs shadow-2xl active:scale-95 transition-all">Salvar no Radar</button>
+                 </form>
+              </div>
+              <div className="bg-white/5 p-10 rounded-[4rem] border border-white/10">
+                 <h3 className="text-2xl font-black mb-8 uppercase tracking-tight">Rede de Serviços</h3>
+                 <div className="space-y-4 max-h-[500px] overflow-y-auto pr-4 custom-scrollbar">
+                    {roadServices.map(s => (
+                       <div key={s.id} className="p-6 bg-slate-900/50 border border-white/5 rounded-3xl flex justify-between items-center group hover:border-white/10 transition-all">
+                          <div className="flex items-center gap-4">
+                             <div className="p-3 bg-white/5 text-amber-500 rounded-2xl">
+                                {s.type.includes('Posto') ? <Fuel size={20}/> : s.type.includes('Oficina') ? <Wrench size={20}/> : <Utensils size={20}/>}
+                             </div>
+                             <div>
+                                <p className="text-sm font-black uppercase tracking-tighter">{s.name}</p>
+                                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{s.type}</p>
+                             </div>
+                          </div>
+                          <button onClick={() => deleteRecord('road_services', s.id)} className="p-3 bg-rose-500/10 text-rose-500 rounded-xl opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={18}/></button>
+                       </div>
+                    ))}
+                 </div>
+              </div>
+           </div>
         )}
 
         {activeTab === 'ALERTS' && (
            <div className="max-w-4xl mx-auto animate-fade-in">
               <div className="bg-white/5 p-10 rounded-[4rem] border border-white/10">
-                 <h3 className="text-2xl font-black mb-8 flex items-center gap-3 uppercase tracking-tighter"><Bell className="text-amber-500" size={28}/> Transmitir Comunicado</h3>
+                 <h3 className="text-2xl font-black mb-8 flex items-center gap-3 uppercase tracking-tighter"><Bell className="text-amber-500" size={28}/> Transmissão Geral</h3>
                  <form onSubmit={handleSendAlert} className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                        <div className="space-y-2">
-                          <label className="text-[10px] font-black uppercase text-slate-500 ml-1 tracking-widest">Tipo de Alerta</label>
-                          <select className="w-full p-6 bg-slate-900 border-none rounded-3xl font-black uppercase text-[10px] text-white outline-none focus:ring-2 focus:ring-amber-500/50 transition-all" value={alertForm.type} onChange={e => setAlertForm({...alertForm, type: e.target.value})}>
-                             <option value="INFO">Informação (Azul)</option>
-                             <option value="WARNING">Aviso (Amarelo)</option>
-                             <option value="URGENT">Urgente (Vermelho)</option>
+                          <label className="text-[10px] font-black uppercase text-slate-500 ml-1 tracking-widest">Prioridade</label>
+                          <select className="w-full p-6 bg-slate-900 border-none rounded-3xl font-black uppercase text-[10px] text-white outline-none focus:ring-2 focus:ring-amber-500/50" value={alertForm.type} onChange={e => setAlertForm({...alertForm, type: e.target.value})}>
+                             <option value="INFO">Informação</option>
+                             <option value="WARNING">Aviso</option>
+                             <option value="URGENT">Urgente</option>
                           </select>
                        </div>
                        <div className="space-y-2">
-                          <label className="text-[10px] font-black uppercase text-slate-500 ml-1 tracking-widest">Categoria</label>
-                          <select className="w-full p-6 bg-slate-900 border-none rounded-3xl font-black uppercase text-[10px] text-white outline-none focus:ring-2 focus:ring-amber-500/50 transition-all" value={alertForm.category} onChange={e => setAlertForm({...alertForm, category: e.target.value})}>
+                          <label className="text-[10px] font-black uppercase text-slate-500 ml-1 tracking-widest">Assunto</label>
+                          <select className="w-full p-6 bg-slate-900 border-none rounded-3xl font-black uppercase text-[10px] text-white outline-none focus:ring-2 focus:ring-amber-500/50" value={alertForm.category} onChange={e => setAlertForm({...alertForm, category: e.target.value})}>
                              <option value="GENERAL">Geral</option>
                              <option value="MAINTENANCE">Manutenção</option>
                              <option value="FINANCE">Financeiro</option>
                              <option value="TRIP">Viagens</option>
-                             <option value="JORNADA">Jornada</option>
                           </select>
                        </div>
                     </div>
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black uppercase text-slate-500 ml-1 tracking-widest">Título do Alerta</label>
-                       <input required placeholder="Ex: Mudança na Política de Fretes" className="w-full p-6 bg-slate-900 border-none rounded-3xl font-bold text-white outline-none focus:ring-2 focus:ring-amber-500/50 transition-all" value={alertForm.title} onChange={e => setAlertForm({...alertForm, title: e.target.value})} />
-                    </div>
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black uppercase text-slate-500 ml-1 tracking-widest">Mensagem Detalhada</label>
-                       <textarea required rows={4} placeholder="Digite as instruções para a equipe..." className="w-full p-6 bg-slate-900 border-none rounded-3xl font-bold text-white outline-none focus:ring-2 focus:ring-amber-500/50 transition-all resize-none" value={alertForm.message} onChange={e => setAlertForm({...alertForm, message: e.target.value})} />
-                    </div>
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black uppercase text-slate-500 ml-1 tracking-widest">Destinatário Específico (Vazio = Todos)</label>
-                       <select className="w-full p-6 bg-slate-900 border-none rounded-3xl font-bold text-white outline-none focus:ring-2 focus:ring-amber-500/50 transition-all" value={alertForm.target_user_email} onChange={e => setAlertForm({...alertForm, target_user_email: e.target.value})}>
-                          <option value="">Enviar para Todos os Motoristas</option>
-                          {drivers.map(d => <option key={d.id} value={d.email}>{d.name} ({d.email})</option>)}
-                       </select>
-                    </div>
+                    <input required placeholder="Título do Comunicado" className="w-full p-6 bg-slate-900 border-none rounded-3xl font-bold text-white outline-none focus:ring-2 focus:ring-amber-500/50" value={alertForm.title} onChange={e => setAlertForm({...alertForm, title: e.target.value})} />
+                    <textarea required rows={4} placeholder="Sua mensagem para a equipe..." className="w-full p-6 bg-slate-900 border-none rounded-3xl font-bold text-white outline-none focus:ring-2 focus:ring-amber-500/50 resize-none" value={alertForm.message} onChange={e => setAlertForm({...alertForm, message: e.target.value})} />
                     <button type="submit" disabled={loading} className="w-full py-6 bg-white text-slate-950 rounded-3xl font-black uppercase text-xs shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3">
-                       {loading ? <Loader2 className="animate-spin" /> : <><Send size={18}/> Transmitir Mensagem</>}
+                       {loading ? <Loader2 className="animate-spin" /> : <Send size={18}/>} Transmitir para Equipe
                     </button>
                  </form>
               </div>
@@ -466,49 +577,38 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-fade-in">
               <div className="bg-white/5 p-10 rounded-[4rem] border border-white/10">
                  <div className="flex justify-between items-center mb-8">
-                    <h3 className="text-2xl font-black uppercase tracking-tight flex items-center gap-3"><Filter className="text-amber-500" size={28}/> Categorias de Carga</h3>
+                    <h3 className="text-2xl font-black uppercase tracking-tight flex items-center gap-3"><Filter className="text-amber-500" size={28}/> Categorias</h3>
                     <button onClick={() => setShowCategoryModal(true)} className="p-3 bg-amber-500 text-slate-950 rounded-2xl hover:bg-amber-400 transition-all shadow-lg active:scale-90"><Plus size={20}/></button>
                  </div>
                  <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                    {categories.length === 0 ? (
-                       <p className="text-center py-10 text-slate-500 text-xs font-black uppercase tracking-widest">Nenhuma categoria configurada.</p>
-                    ) : categories.map(cat => (
+                    {categories.map(cat => (
                        <div key={cat.id} className="p-5 bg-slate-900 rounded-3xl flex justify-between items-center group border border-white/5 hover:border-amber-500/20 transition-all">
                           <span className="text-sm font-bold uppercase tracking-tight">{cat.name}</span>
                           <button onClick={() => handleDeleteCategory(cat.id)} className="p-2 text-slate-500 hover:text-rose-500 transition-all opacity-0 group-hover:opacity-100"><Trash2 size={16}/></button>
                        </div>
                     ))}
-                    <button 
-                      onClick={() => setShowCategoryModal(true)} 
-                      className="w-full py-4 border-2 border-dashed border-white/10 rounded-2xl text-[10px] font-black uppercase text-slate-500 mt-4 hover:border-amber-500/30 hover:text-amber-500 transition-all"
-                    >
-                      + Adicionar Nova Categoria
-                    </button>
+                    <button onClick={() => setShowCategoryModal(true)} className="w-full py-4 border-2 border-dashed border-white/10 rounded-2xl text-[10px] font-black uppercase text-slate-500 mt-4">+ Nova Categoria</button>
                  </div>
               </div>
               <div className="bg-white/5 p-10 rounded-[4rem] border border-white/10">
-                 <h3 className="text-2xl font-black mb-6 uppercase flex items-center gap-3 tracking-tighter"><Settings className="text-amber-500" size={28}/> Configurações</h3>
+                 <h3 className="text-2xl font-black mb-6 uppercase flex items-center gap-3 tracking-tighter"><Settings className="text-amber-500" size={28}/> Sistema</h3>
                  <div className="space-y-6">
                     <div className="flex justify-between items-center py-6 border-b border-white/5">
                        <div>
-                          <p className="font-bold text-sm uppercase tracking-tighter">Segurança Máxima</p>
-                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Criptografia de fim a fim ativa</p>
+                          <p className="font-bold text-sm uppercase tracking-tighter">Backup Master</p>
+                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Dados criptografados na nuvem</p>
                        </div>
-                       <div className="w-12 h-6 bg-emerald-500/20 rounded-full flex items-center px-1 border border-emerald-500/50"><div className="w-4 h-4 bg-emerald-500 rounded-full ml-auto"></div></div>
+                       <div className="w-12 h-6 bg-emerald-500 rounded-full flex items-center px-1"><div className="w-4 h-4 bg-white rounded-full ml-auto"></div></div>
                     </div>
                     <div className="flex justify-between items-center py-6 border-b border-white/5">
                        <div>
-                          <p className="font-bold text-sm uppercase tracking-tighter">Logs de Sistema</p>
-                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Rastreamento de todas as alterações</p>
+                          <p className="font-bold text-sm uppercase tracking-tighter">Logs de Auditoria</p>
+                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Rastreio de alterações operacionais</p>
                        </div>
                        <div className="w-12 h-6 bg-amber-500 rounded-full flex items-center px-1"><div className="w-4 h-4 bg-white rounded-full ml-auto"></div></div>
                     </div>
                  </div>
-                 <div className="mt-10 p-6 bg-rose-500/5 border border-rose-500/20 rounded-3xl">
-                    <h4 className="text-xs font-black text-rose-500 uppercase tracking-widest mb-2">Zona de Perigo</h4>
-                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-relaxed mb-4">Estas ações não podem ser desfeitas e afetam todos os usuários da rede.</p>
-                    <button onClick={() => { if(confirm("CUIDADO: Isso limpará todos os comunicados antigos. Confirmar?")) supabase.from('notifications').delete().not('id', 'is', null).then(loadAllAdminData) }} className="w-full py-4 border-2 border-rose-500/20 text-rose-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-500 hover:text-white transition-all">Limpar Histórico de Alertas</button>
-                 </div>
+                 <button onClick={() => { if(confirm("Deseja mesmo limpar todos os comunicados?")) supabase.from('notifications').delete().not('id', 'is', null).then(loadAllAdminData) }} className="w-full mt-10 py-4 border-2 border-rose-500/20 text-rose-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-500 hover:text-white transition-all">Limpar Alertas de Sistema</button>
               </div>
            </div>
         )}
@@ -524,22 +624,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                </div>
                <div className="space-y-6">
                   <div className="space-y-2">
-                     <label className="text-[10px] font-black uppercase text-slate-500 ml-1 tracking-widest">Nome da Categoria</label>
+                     <label className="text-[10px] font-black uppercase text-slate-500 ml-1 tracking-widest">Descrição</label>
                      <input 
                         autoFocus
                         className="w-full p-5 bg-slate-950 border border-white/10 rounded-3xl font-bold outline-none focus:border-amber-500 text-white" 
-                        placeholder="Ex: Carga Viva"
+                        placeholder="Ex: Carga Frágil"
                         value={categoryName}
                         onChange={e => setCategoryName(e.target.value)}
                         onKeyPress={e => e.key === 'Enter' && handleAddCategory()}
                      />
                   </div>
-                  <button 
-                     disabled={loading}
-                     onClick={handleAddCategory} 
-                     className="w-full py-5 bg-amber-500 text-slate-950 rounded-3xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all flex items-center justify-center"
-                  >
-                     {loading ? <Loader2 className="animate-spin" size={20}/> : 'Adicionar Categoria'}
+                  <button disabled={loading} onClick={handleAddCategory} className="w-full py-5 bg-amber-500 text-slate-950 rounded-3xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all flex items-center justify-center">
+                     {loading ? <Loader2 className="animate-spin" size={20}/> : 'Adicionar'}
                   </button>
                </div>
             </div>
