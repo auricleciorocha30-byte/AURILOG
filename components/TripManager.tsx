@@ -405,6 +405,34 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
           </div>
         </div>
       )}
+
+      {/* Modal de Atualização de KM */}
+      {isKmModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md flex items-center justify-center p-6 z-[110] animate-fade-in">
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-scale-up">
+            <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight mb-2">Finalizar Viagem</h3>
+            <p className="text-slate-500 text-xs font-medium mb-6">Atualize a quilometragem do veículo para manter o histórico preciso.</p>
+            
+            <div className="space-y-4">
+               <div>
+                 <label className="text-[10px] font-black uppercase text-slate-400 ml-1">KM Final do Veículo</label>
+                 <input 
+                    type="number" 
+                    autoFocus
+                    className="w-full p-4 bg-slate-50 border-2 border-primary-100 rounded-2xl font-black text-2xl text-slate-900 outline-none focus:border-primary-500 transition-all" 
+                    value={newVehicleKm} 
+                    onChange={e => setNewVehicleKm(Number(e.target.value))} 
+                 />
+               </div>
+               
+               <div className="flex gap-3 pt-2">
+                 <button onClick={() => setIsKmModalOpen(false)} className="flex-1 py-4 font-bold text-slate-400 hover:bg-slate-50 rounded-2xl transition-all">Cancelar</button>
+                 <button onClick={confirmKmUpdate} className="flex-1 py-4 bg-emerald-500 text-white font-black rounded-2xl shadow-lg hover:bg-emerald-600 transition-all">Confirmar</button>
+               </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

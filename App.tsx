@@ -259,7 +259,7 @@ const App: React.FC = () => {
   return (
     <div className="h-screen bg-slate-50 flex flex-col md:flex-row font-['Plus_Jakarta_Sans'] overflow-hidden">
       {/* Sidebar Desktop */}
-      <div className={`fixed md:relative inset-0 md:inset-auto z-[60] md:z-40 bg-white md:bg-transparent ${isMenuOpen ? 'flex' : 'hidden'} md:flex md:w-80 md:flex-col md:border-r p-6 md:sticky md:top-0 md:h-screen transition-all shadow-2xl md:shadow-none`}>
+      <div className={`fixed md:relative inset-0 md:inset-auto z-[60] md:z-40 bg-white md:bg-transparent ${isMenuOpen ? 'flex' : 'hidden'} md:flex flex-col md:w-80 md:border-r p-6 md:sticky md:top-0 md:h-screen transition-all shadow-2xl md:shadow-none`}>
         <div className="flex md:flex-col justify-between items-center md:items-start mb-10 w-full safe-top">
           <div>
             <h1 className="text-3xl font-black tracking-tighter text-primary-600">AURILOG</h1>
