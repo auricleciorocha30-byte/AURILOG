@@ -41,23 +41,22 @@ import {
 } from 'lucide-react';
 
 const App: React.FC = () => {
-  // Detector de Contexto
   const queryParams = new URLSearchParams(window.location.search);
   const isDriverContext = queryParams.get('mode') === 'driver';
 
-  // Inicialização de estado sincronizada com localStorage para evitar logout no refresh
+  // Inicialização robusta: Recupera a sessão imediatamente para evitar logout no refresh
   const [authRole, setAuthRole] = useState<'DRIVER' | 'ADMIN' | null>(() => {
-    const saved = localStorage.getItem('aurilog_role');
-    if (!saved) return null;
-    // Só restaura se o modo da URL bater com a role salva
-    if (isDriverContext && saved === 'DRIVER') return 'DRIVER';
-    if (!isDriverContext && saved === 'ADMIN') return 'ADMIN';
+    const savedRole = localStorage.getItem('aurilog_role') as 'DRIVER' | 'ADMIN' | null;
+    if (!savedRole) return null;
+    // Garante que o usuário está no portal correto
+    if (isDriverContext && savedRole === 'DRIVER') return 'DRIVER';
+    if (!isDriverContext && savedRole === 'ADMIN') return 'ADMIN';
     return null;
   });
 
   const [currentUser, setCurrentUser] = useState<any>(() => {
-    const saved = localStorage.getItem('aurilog_user');
-    return saved ? JSON.parse(saved) : null;
+    const savedUser = localStorage.getItem('aurilog_user');
+    return savedUser ? JSON.parse(savedUser) : null;
   });
 
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -94,18 +93,6 @@ const App: React.FC = () => {
     };
   }, []);
 
-  useEffect(() => {
-    let interval: number;
-    if (jornadaMode !== 'IDLE' && jornadaStartTime) {
-      interval = window.setInterval(() => {
-        setJornadaCurrentTime(Math.floor((Date.now() - jornadaStartTime) / 1000));
-      }, 1000);
-    } else {
-      setJornadaCurrentTime(0);
-    }
-    return () => clearInterval(interval);
-  }, [jornadaMode, jornadaStartTime]);
-
   const fetchData = useCallback(async () => {
     if (!currentUser) return;
     const userId = currentUser.id;
@@ -137,7 +124,7 @@ const App: React.FC = () => {
       if (notificationsRes.data) setNotifications(notificationsRes.data);
       if (servicesRes.data) setRoadServices(servicesRes.data);
     } catch (error) {
-      console.warn("Falha na sincronização online. Mantendo dados locais.");
+      console.warn("Isolamento offline.");
     }
   }, [isOnline, currentUser]);
 
@@ -180,13 +167,12 @@ const App: React.FC = () => {
   const handleLogin = async () => {
     const inputEmail = loginForm.email.toLowerCase().trim();
     const inputPassword = loginForm.password.trim();
-    if (!inputEmail || !inputPassword) return alert("Por favor, digite e-mail e senha.");
+    if (!inputEmail || !inputPassword) return alert("Digite e-mail e senha.");
     setIsLoggingIn(true);
     try {
       const table = isDriverContext ? 'drivers' : 'admins';
       const role = isDriverContext ? 'DRIVER' : 'ADMIN';
 
-      // Login Master Especial
       if (!isDriverContext && inputEmail === 'admin@aurilog.com' && inputPassword === 'admin123') {
         const masterUser = { id: '00000000-0000-0000-0000-000000000000', name: 'Gestor Master', email: 'admin@aurilog.com' };
         setCurrentUser(masterUser);
@@ -196,14 +182,9 @@ const App: React.FC = () => {
         return;
       }
 
-      const { data: dbUser, error } = await supabase.from(table)
-        .select('*')
-        .eq('email', inputEmail)
-        .eq('password', inputPassword)
-        .maybeSingle();
-
-      if (error) throw new Error(`Erro no servidor: ${error.message}`);
-      if (!dbUser) throw new Error(`Credenciais inválidas para o portal selecionado.`);
+      const { data: dbUser, error } = await supabase.from(table).select('*').eq('email', inputEmail).eq('password', inputPassword).maybeSingle();
+      if (error) throw error;
+      if (!dbUser) throw new Error("Credenciais inválidas.");
 
       setCurrentUser(dbUser);
       setAuthRole(role);
@@ -223,11 +204,6 @@ const App: React.FC = () => {
     localStorage.removeItem('aurilog_user');
   };
 
-  const handleOpenDriverAppInNewTab = () => {
-    const url = window.location.origin + '?mode=driver';
-    window.open(url, '_blank');
-  };
-
   if (!authRole) {
     return (
       <div className={`min-h-screen ${isDriverContext ? 'bg-slate-50' : 'bg-slate-950'} flex flex-col items-center justify-center p-6 font-['Plus_Jakarta_Sans']`}>
@@ -240,39 +216,16 @@ const App: React.FC = () => {
                AURI<span className={isDriverContext ? 'text-primary-600' : 'text-amber-500'}>LOG</span>
              </h1>
              <p className="text-slate-500 font-bold uppercase tracking-widest text-[11px] mt-4">
-               {isDriverContext ? 'Portal do Motorista' : 'Portal de Gestão de Frota'}
+               {isDriverContext ? 'Portal do Motorista' : 'Painel de Gestão'}
              </p>
           </div>
           <div className={`${isDriverContext ? 'bg-white' : 'bg-white/5 border border-white/10'} p-10 rounded-[3rem] shadow-2xl space-y-6`}>
             <div className="space-y-4">
-              <div className="relative">
-                <User className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                <input 
-                  type="email" 
-                  placeholder="E-mail" 
-                  className={`w-full p-6 pl-16 rounded-3xl font-bold outline-none ${isDriverContext ? 'bg-slate-50 text-slate-900' : 'bg-white/5 text-white'}`}
-                  value={loginForm.email} 
-                  onChange={e => setLoginForm({...loginForm, email: e.target.value})} 
-                />
-              </div>
-              <div className="relative">
-                <Lock className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                <input 
-                  type="password" 
-                  placeholder="Senha" 
-                  className={`w-full p-6 pl-16 rounded-3xl font-bold outline-none ${isDriverContext ? 'bg-slate-50 text-slate-900' : 'bg-white/5 text-white'}`}
-                  value={loginForm.password} 
-                  onChange={e => setLoginForm({...loginForm, password: e.target.value})} 
-                />
-              </div>
+              <input type="email" placeholder="E-mail" className={`w-full p-6 rounded-3xl font-bold outline-none ${isDriverContext ? 'bg-slate-50 text-slate-900' : 'bg-white/5 text-white'}`} value={loginForm.email} onChange={e => setLoginForm({...loginForm, email: e.target.value})} />
+              <input type="password" placeholder="Senha" className={`w-full p-6 rounded-3xl font-bold outline-none ${isDriverContext ? 'bg-slate-50 text-slate-900' : 'bg-white/5 text-white'}`} value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} />
             </div>
-            <button 
-              onClick={handleLogin} 
-              disabled={isLoggingIn} 
-              className={`w-full py-6 rounded-3xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3 text-white ${isDriverContext ? 'bg-primary-600' : 'bg-amber-600'}`}
-            >
-              {isLoggingIn ? <Loader2 className="animate-spin" /> : <Unlock size={20} />}
-              Entrar no Sistema
+            <button onClick={handleLogin} disabled={isLoggingIn} className={`w-full py-6 rounded-3xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all text-white ${isDriverContext ? 'bg-primary-600' : 'bg-amber-600'}`}>
+              {isLoggingIn ? <Loader2 className="animate-spin" /> : 'Acessar'}
             </button>
           </div>
         </div>
@@ -281,34 +234,33 @@ const App: React.FC = () => {
   }
 
   if (authRole === 'ADMIN') {
-    return <AdminPanel onRefresh={fetchData} onLogout={handleLogout} onUnlockDriverApp={handleOpenDriverAppInNewTab} />;
+    return <AdminPanel onRefresh={fetchData} onLogout={handleLogout} onUnlockDriverApp={() => window.open(window.location.origin + '?mode=driver', '_blank')} />;
   }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-['Plus_Jakarta_Sans'] overflow-hidden">
-      {/* Sidebar Desktop */}
       <div className={`fixed md:relative inset-0 md:inset-auto z-40 bg-white md:bg-transparent ${isMenuOpen ? 'flex' : 'hidden'} md:flex md:w-80 md:flex-col md:border-r p-6 md:sticky md:top-0 md:h-screen transition-all shadow-sm`}>
         <div className="flex md:flex-col justify-between items-center md:items-start mb-10 w-full">
           <div>
-            <h1 className="text-3xl font-black tracking-tighter text-primary-600 leading-none">AURILOG</h1>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{currentUser?.name?.split(' ')[0]}</p>
+            <h1 className="text-3xl font-black tracking-tighter text-primary-600">AURILOG</h1>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Olá, {currentUser?.name?.split(' ')[0]}</p>
           </div>
           <button onClick={() => setIsMenuOpen(false)} className="md:hidden p-3 bg-slate-100 rounded-full"><X size={24}/></button>
         </div>
 
         <div className="flex-1 flex flex-col gap-2 overflow-y-auto no-scrollbar">
-          <button onClick={() => { setCurrentView(AppView.DASHBOARD); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all ${currentView === AppView.DASHBOARD ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><LayoutDashboard size={20} /> Dashboard</button>
-          <button onClick={() => { setCurrentView(AppView.TRIPS); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all ${currentView === AppView.TRIPS ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><MapIcon size={20} /> Viagens</button>
-          <button onClick={() => { setCurrentView(AppView.EXPENSES); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all ${currentView === AppView.EXPENSES ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><ReceiptText size={20} /> Financeiro</button>
-          <button onClick={() => { setCurrentView(AppView.VEHICLES); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all ${currentView === AppView.VEHICLES ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><Truck size={20} /> Frota</button>
-          <button onClick={() => { setCurrentView(AppView.MAINTENANCE); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all ${currentView === AppView.MAINTENANCE ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><Wrench size={20} /> Manutenção</button>
-          <button onClick={() => { setCurrentView(AppView.CALCULATOR); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all ${currentView === AppView.CALCULATOR ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><Calculator size={20} /> Calculadora</button>
-          <button onClick={() => { setCurrentView(AppView.JORNADA); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all ${currentView === AppView.JORNADA ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><Timer size={20} /> Jornada</button>
-          <button onClick={() => { setCurrentView(AppView.STATIONS); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all ${currentView === AppView.STATIONS ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><MapPinned size={20} /> Radar</button>
+          <button onClick={() => { setCurrentView(AppView.DASHBOARD); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === AppView.DASHBOARD ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><LayoutDashboard size={20} /> Dashboard</button>
+          <button onClick={() => { setCurrentView(AppView.TRIPS); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === AppView.TRIPS ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><MapIcon size={20} /> Viagens</button>
+          <button onClick={() => { setCurrentView(AppView.EXPENSES); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === AppView.EXPENSES ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><ReceiptText size={20} /> Financeiro</button>
+          <button onClick={() => { setCurrentView(AppView.VEHICLES); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === AppView.VEHICLES ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><Truck size={20} /> Frota</button>
+          <button onClick={() => { setCurrentView(AppView.MAINTENANCE); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === AppView.MAINTENANCE ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><Wrench size={20} /> Manutenção</button>
+          <button onClick={() => { setCurrentView(AppView.CALCULATOR); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === AppView.CALCULATOR ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><Calculator size={20} /> Calculadora</button>
+          <button onClick={() => { setCurrentView(AppView.JORNADA); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === AppView.JORNADA ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><Timer size={20} /> Jornada</button>
+          <button onClick={() => { setCurrentView(AppView.STATIONS); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === AppView.STATIONS ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}><MapPinned size={20} /> Radar</button>
         </div>
 
         <div className="mt-6 pt-6 border-t space-y-4">
-          <button onClick={() => setShowNotifications(true)} className="w-full flex items-center justify-between gap-4 px-6 py-4 rounded-2xl font-black text-[11px] uppercase text-slate-500 hover:bg-slate-100 transition-all relative">
+          <button onClick={() => setShowNotifications(true)} className="w-full flex items-center justify-between gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase text-slate-500 hover:bg-slate-100 transition-all relative">
             <div className="flex items-center gap-4">
               <Bell size={20} /> Alertas
             </div>
@@ -318,28 +270,19 @@ const App: React.FC = () => {
               </span>
             )}
           </button>
-          <div className={`flex items-center gap-3 px-4 py-2 rounded-xl text-[10px] font-black uppercase ${isOnline ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
-            {isOnline ? <Wifi size={16} /> : <WifiOff size={16} />}
-            {isOnline ? 'Online' : 'Offline'}
-          </div>
-          <button onClick={handleLogout} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-[11px] uppercase text-rose-500 hover:bg-rose-50 transition-all">
+          <button onClick={handleLogout} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase text-rose-500 hover:bg-rose-50 transition-all">
             <LogOut size={20} /> Sair
           </button>
         </div>
       </div>
 
       <main className="flex-1 overflow-y-auto h-screen relative">
-        {/* Header Mobile */}
         <div className="md:hidden bg-white p-4 flex justify-between items-center border-b sticky top-0 z-30">
-          <h1 className="text-xl font-black text-primary-600 tracking-tighter">AURILOG</h1>
+          <h1 className="text-xl font-black text-primary-600">AURILOG</h1>
           <div className="flex items-center gap-2">
             <button onClick={() => setShowNotifications(true)} className="p-3 bg-slate-50 rounded-xl text-slate-500 relative">
               <Bell size={24}/>
-              {notifications.length > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 bg-rose-500 text-white text-[9px] font-black rounded-full flex items-center justify-center shadow-lg animate-pulse">
-                  {notifications.length}
-                </span>
-              )}
+              {notifications.length > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 bg-rose-500 text-white text-[9px] font-black rounded-full flex items-center justify-center animate-pulse">{notifications.length}</span>}
             </button>
             <button onClick={() => setIsMenuOpen(true)} className="p-3 bg-slate-50 rounded-xl text-slate-500"><Menu size={24}/></button>
           </div>
@@ -352,18 +295,13 @@ const App: React.FC = () => {
           {currentView === AppView.VEHICLES && <VehicleManager vehicles={vehicles} onAddVehicle={(v) => handleAction('vehicles', v, 'insert')} onUpdateVehicle={(id, v) => handleAction('vehicles', { ...v, id }, 'update')} onDeleteVehicle={(id) => handleAction('vehicles', { id }, 'delete')} isSaving={isSaving} />}
           {currentView === AppView.MAINTENANCE && <MaintenanceManager maintenance={maintenance} vehicles={vehicles} onAddMaintenance={(m) => handleAction('maintenance', m, 'insert')} onDeleteMaintenance={(id) => handleAction('maintenance', { id }, 'delete')} isSaving={isSaving} />}
           {currentView === AppView.CALCULATOR && <FreightCalculator />}
-          {currentView === AppView.JORNADA && <JornadaManager mode={jornadaMode} startTime={jornadaStartTime} currentTime={jornadaCurrentTime} logs={jornadaLogs} setMode={setJornadaMode} setStartTime={setStartTime => setJornadaStartTime(setStartTime)} onSaveLog={(l) => handleAction('jornada_logs', l, 'insert')} onDeleteLog={(id) => handleAction('jornada_logs', { id }, 'delete')} onClearHistory={async () => {}} addGlobalNotification={() => {}} isSaving={isSaving} />}
+          {currentView === AppView.JORNADA && <JornadaManager mode={jornadaMode} startTime={jornadaStartTime} currentTime={jornadaCurrentTime} logs={jornadaLogs} setMode={setJornadaMode} setStartTime={setJornadaStartTime} onSaveLog={(l) => handleAction('jornada_logs', l, 'insert')} onDeleteLog={(id) => handleAction('jornada_logs', { id }, 'delete')} onClearHistory={async () => {}} addGlobalNotification={() => {}} isSaving={isSaving} />}
           {currentView === AppView.STATIONS && <StationLocator roadServices={roadServices} />}
         </div>
       </main>
 
       {showNotifications && (
-        <NotificationCenter 
-          notifications={notifications as any} 
-          onClose={() => setShowNotifications(false)} 
-          onAction={(cat) => { setCurrentView(cat as AppView); setShowNotifications(false); }} 
-          onDismiss={(id) => setNotifications(prev => prev.filter(n => n.id !== id))} 
-        />
+        <NotificationCenter notifications={notifications as any} onClose={() => setShowNotifications(false)} onAction={(cat) => { setCurrentView(cat as AppView); setShowNotifications(false); }} onDismiss={(id) => setNotifications(prev => prev.filter(n => n.id !== id))} />
       )}
     </div>
   );
