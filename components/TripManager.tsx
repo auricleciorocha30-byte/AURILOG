@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Trip, TripStatus, Vehicle, TripStop, Expense } from '../types';
-import { Plus, MapPin, Calendar, Truck, UserCheck, Navigation, X, Trash2, Map as MapIcon, ChevronRight, Percent, Loader2, Edit2, DollarSign, MessageSquare, Sparkles, Wand2, PlusCircle, ExternalLink, CheckSquare, Gauge, Utensils, Construction, MapPinPlus, ShieldCheck, ChevronDown, AlignLeft, CheckCircle2, Package, NotebookPen, GaugeCircle, MapPinned, ReceiptText, Wifi, WifiOff, CloudUpload, Clock } from 'lucide-react';
+import { Plus, MapPin, Calendar, Truck, UserCheck, Navigation, X, Trash2, Map as MapIcon, ChevronRight, Percent, Loader2, Edit2, DollarSign, MessageSquare, Sparkles, Wand2, PlusCircle, ExternalLink, CheckSquare, Gauge, Utensils, Construction, MapPinPlus, ShieldCheck, ChevronDown, AlignLeft, CheckCircle2, Package, NotebookPen, GaugeCircle, MapPinned, ReceiptText, Wifi, WifiOff, CloudUpload, Clock, Smartphone, LocateFixed } from 'lucide-react';
 import { calculateANTT } from '../services/anttService';
 
 interface TripManagerProps {
@@ -13,7 +13,7 @@ interface TripManagerProps {
   onUpdateStatus: (id: string, status: TripStatus, newVehicleKm?: number) => Promise<void>;
   onDeleteTrip: (id: string) => Promise<void>;
   isSaving?: boolean;
-  isOnline?: boolean; // Propriedade para detectar estado da rede
+  isOnline?: boolean;
 }
 
 const BRAZILIAN_STATES = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
@@ -35,6 +35,9 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
   const [editingTripId, setEditingTripId] = useState<string | null>(null);
   const [pendingStatusUpdate, setPendingStatusUpdate] = useState<{id: string, status: TripStatus, vehicleId?: string} | null>(null);
   const [newVehicleKm, setNewVehicleKm] = useState<number>(0);
+  
+  // Estado para o seletor de mapa
+  const [routeMenuId, setRouteMenuId] = useState<string | null>(null);
   
   const [origin, setOrigin] = useState({ city: '', state: 'SP' });
   const [destination, setDestination] = useState({ city: '', state: 'SP' });
@@ -68,15 +71,10 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
         [TripStatus.COMPLETED]: 3,
         [TripStatus.CANCELLED]: 4
       };
-
       if (statusPriority[a.status] !== statusPriority[b.status]) {
         return statusPriority[a.status] - statusPriority[b.status];
       }
-
-      if (a.status === TripStatus.COMPLETED || a.status === TripStatus.CANCELLED) {
-        return b.date.localeCompare(a.date);
-      }
-      return a.date.localeCompare(b.date);
+      return b.date.localeCompare(a.date);
     });
   }, [trips]);
 
@@ -110,22 +108,25 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
     setStops(stops.filter((_, i) => i !== index));
   };
 
-  const getMapsUrl = (originText: string, destText: string, tripStops: TripStop[] = []) => {
-    if (!originText || !destText) return "";
-    const originStr = `${originText}, Brasil`.replace(' - ', ', ');
-    const destStr = `${destText}, Brasil`.replace(' - ', ', ');
+  // Funções de Roteirização
+  const openGoogleMaps = (trip: Trip) => {
+    const originStr = `${trip.origin}, Brasil`.replace(' - ', ', ');
+    const destStr = `${trip.destination}, Brasil`.replace(' - ', ', ');
     let url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originStr)}&destination=${encodeURIComponent(destStr)}&travelmode=driving`;
-    if (tripStops.length > 0) {
-      const waypointsStr = tripStops.map(s => `${s.city}, ${s.state}, Brasil`).join('|');
+    
+    if (trip.stops && trip.stops.length > 0) {
+      const waypointsStr = trip.stops.map(s => `${s.city}, ${s.state}, Brasil`).join('|');
       url += `&waypoints=${encodeURIComponent(waypointsStr)}`;
     }
-    return url;
+    window.open(url, '_blank');
+    setRouteMenuId(null);
   };
 
-  const getWazeUrl = (destCity: string, destState: string) => {
-    if (!destCity) return "";
-    const destStr = `${destCity}, ${destState}, Brasil`;
-    return `https://www.waze.com/ul?q=${encodeURIComponent(destStr)}&navigate=yes`;
+  const openWaze = (trip: Trip) => {
+    const destStr = `${trip.destination}, Brasil`.replace(' - ', ', ');
+    const url = `https://www.waze.com/ul?q=${encodeURIComponent(destStr)}&navigate=yes`;
+    window.open(url, '_blank');
+    setRouteMenuId(null);
   };
 
   const suggestANTTPrice = () => {
@@ -169,7 +170,7 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
   };
 
   const handleEdit = (trip: Trip) => {
-    setEditingId(trip.id);
+    setEditingTripId(trip.id);
     const originParts = (trip.origin || "").split(' - ');
     const destParts = (trip.destination || "").split(' - ');
     setOrigin({ city: originParts[0] || '', state: originParts[1] || 'SP' });
@@ -189,17 +190,13 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
     setIsModalOpen(true);
   };
 
-  const setEditingId = (id: string | null) => {
-    setEditingTripId(id);
-  };
-
   const handleSave = async () => {
     if (!origin.city || !destination.city || !formData.distance_km || !formData.agreed_price) {
       alert("Preencha campos obrigatórios.");
       return;
     }
     const payload = {
-      description: formData.description.trim(),
+      description: formData.description?.trim() || "",
       origin: `${origin.city} - ${origin.state}`,
       destination: `${destination.city} - ${destination.state}`,
       distance_km: Number(formData.distance_km),
@@ -208,9 +205,9 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
       driver_commission: Number(calculatedCommission),
       cargo_type: formData.cargo_type,
       date: formData.date,
-      vehicle_id: formData.vehicle_id,
+      vehicle_id: formData.vehicle_id || null,
       status: formData.status,
-      notes: formData.notes.trim(),
+      notes: formData.notes?.trim() || "",
       stops: stops
     };
     
@@ -224,7 +221,7 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
       resetForm();
     } catch (err) {
       console.error("Erro ao salvar viagem:", err);
-      alert("Erro ao salvar. Verifique sua conexão.");
+      alert("Erro ao salvar. Tente atualizar a página ou verifique o banco de dados.");
     }
   };
 
@@ -237,7 +234,7 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
              <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Status e Roteirização</p>
              <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-black uppercase ${isOnline ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
                 {isOnline ? <Wifi size={10} /> : <WifiOff size={10} />}
-                {isOnline ? 'Sincronizado' : 'Modo Offline (Salva Local)'}
+                {isOnline ? 'Sincronizado' : 'Modo Offline'}
              </div>
           </div>
         </div>
@@ -246,25 +243,12 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
         </button>
       </div>
 
-      {!isOnline && (
-        <div className="mx-4 bg-amber-50 border border-amber-100 p-4 rounded-3xl flex items-center gap-4 animate-fade-in shadow-sm">
-          <div className="p-3 bg-amber-500 text-white rounded-2xl shrink-0"><WifiOff size={20} /></div>
-          <div>
-            <p className="text-xs font-black text-amber-800 uppercase leading-none mb-1">Sem conexão detectada</p>
-            <p className="text-[10px] text-amber-600 font-bold leading-tight uppercase">Suas viagens serão salvas no celular e sincronizadas automaticamente quando o sinal voltar.</p>
-          </div>
-        </div>
-      )}
-
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 px-4">
         {sortedTrips.map(trip => {
           const vehicle = vehicles.find(v => v.id === trip.vehicle_id);
           const isAtrasada = trip.status === TripStatus.SCHEDULED && trip.date < getTodayLocal();
           const isHoje = trip.status === TripStatus.SCHEDULED && trip.date === getTodayLocal();
-          
-          // Verifica se a viagem está aguardando sincronização no IndexedDB
           const isPending = (trip as any).sync_status === 'pending';
-
           const tripExpensesTotal = expenses
             .filter(e => e.trip_id === trip.id)
             .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
@@ -289,29 +273,25 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
               <div className="flex flex-col gap-6">
                  <div className="flex-1">
                     <div className="flex flex-col items-start gap-2 mb-4 pr-20">
-                      <div className="shrink-0 flex items-center gap-2">
-                        <select 
-                          value={trip.status} 
-                          onChange={(e) => handleStatusChange(trip, e.target.value as TripStatus)}
-                          className={`text-[9px] font-black uppercase px-3 py-1.5 rounded-full border-none cursor-pointer focus:ring-2 focus:ring-primary-500 ${
-                            trip.status === TripStatus.COMPLETED ? 'bg-emerald-100 text-emerald-700' : 
-                            trip.status === TripStatus.IN_PROGRESS ? 'bg-blue-100 text-blue-700' :
-                            trip.status === TripStatus.CANCELLED ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700'
-                          }`}
-                        >
-                          {Object.values(TripStatus).map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      </div>
+                      <select 
+                        value={trip.status} 
+                        onChange={(e) => handleStatusChange(trip, e.target.value as TripStatus)}
+                        className={`text-[9px] font-black uppercase px-3 py-1.5 rounded-full border-none cursor-pointer ${
+                          trip.status === TripStatus.COMPLETED ? 'bg-emerald-100 text-emerald-700' : 
+                          trip.status === TripStatus.IN_PROGRESS ? 'bg-blue-100 text-blue-700' :
+                          trip.status === TripStatus.CANCELLED ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700'
+                        }`}
+                      >
+                        {Object.values(TripStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
                       <span className="text-[10px] md:text-xs font-black text-slate-400 flex items-center gap-1 uppercase">
                         <Calendar size={12} /> {formatDateDisplay(trip.date)}
                       </span>
                     </div>
 
-                    {trip.description && (
-                      <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter mb-4 leading-tight line-clamp-2">
-                        {trip.description}
-                      </h3>
-                    )}
+                    <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter mb-4 leading-tight line-clamp-2">
+                      {trip.description || `${trip.origin.split(' - ')[0]} ➔ ${trip.destination.split(' - ')[0]}`}
+                    </h3>
                     
                     <div className="space-y-1 mb-4">
                       <div className="flex items-center gap-2">
@@ -332,39 +312,39 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
                       </span>
                     </div>
 
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-slate-50 p-4 rounded-2xl">
-                          <p className="text-[9px] font-black text-slate-400 uppercase">Distância</p>
-                          <p className="text-lg font-black text-slate-800">{trip.distance_km} KM</p>
-                        </div>
-                        <div className="bg-primary-50 p-4 rounded-2xl">
-                          <p className="text-[9px] font-black text-primary-400 uppercase">Valor Frete</p>
-                          <p className="text-lg font-black text-primary-700">R$ {trip.agreed_price.toLocaleString()}</p>
-                        </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-slate-50 p-4 rounded-2xl">
+                        <p className="text-[9px] font-black text-slate-400 uppercase">Distância</p>
+                        <p className="text-lg font-black text-slate-800">{trip.distance_km} KM</p>
                       </div>
-                      
-                      <div className="bg-rose-50 p-4 rounded-2xl border border-rose-100">
-                        <div className="flex items-center gap-2 mb-1">
-                          <ReceiptText size={12} className="text-rose-400" />
-                          <p className="text-[9px] font-black text-rose-400 uppercase">Gastos Vinculados</p>
-                        </div>
-                        <p className="text-lg font-black text-rose-700">R$ {tripExpensesTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                      <div className="bg-primary-50 p-4 rounded-2xl">
+                        <p className="text-[9px] font-black text-primary-400 uppercase">Frete</p>
+                        <p className="text-lg font-black text-primary-700">R$ {trip.agreed_price.toLocaleString()}</p>
                       </div>
                     </div>
                  </div>
               </div>
 
-              <div className="mt-6 flex flex-col gap-2">
-                <button 
-                   onClick={() => {
-                     if (!isOnline) return alert("Esta função requer internet para carregar o mapa. Tente usar o Google Maps Offline do seu celular.");
-                     window.open(getMapsUrl(trip.origin, trip.destination, trip.stops), '_blank');
-                   }} 
-                   className={`w-full py-4 rounded-2xl font-black text-[10px] uppercase flex items-center justify-center gap-2 transition-all ${isOnline ? 'bg-slate-900 text-white hover:bg-black' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
-                >
-                  <MapIcon size={14}/> Rota GPS {!isOnline && '(Requer Net)'}
-                </button>
+              {/* Botão de Rota com Seletor */}
+              <div className="mt-6 relative">
+                {routeMenuId === trip.id ? (
+                  <div className="bg-slate-900 rounded-2xl p-2 flex flex-col gap-1 animate-fade-in shadow-xl">
+                    <button onClick={() => openGoogleMaps(trip)} className="flex items-center justify-between w-full p-4 bg-white/5 hover:bg-white/10 rounded-xl text-white font-black text-[10px] uppercase transition-all">
+                      Abrir no Google Maps <MapIcon size={16} className="text-primary-400" />
+                    </button>
+                    <button onClick={() => openWaze(trip)} className="flex items-center justify-between w-full p-4 bg-white/5 hover:bg-white/10 rounded-xl text-white font-black text-[10px] uppercase transition-all">
+                      Abrir no Waze <Smartphone size={16} className="text-blue-400" />
+                    </button>
+                    <button onClick={() => setRouteMenuId(null)} className="w-full py-2 text-slate-500 font-black text-[8px] uppercase">Cancelar</button>
+                  </div>
+                ) : (
+                  <button 
+                     onClick={() => setRouteMenuId(trip.id)} 
+                     className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase flex items-center justify-center gap-2 hover:bg-black transition-all shadow-lg active:scale-95"
+                  >
+                    <Navigation size={14} className="fill-white" /> Iniciar Rota GPS
+                  </button>
+                )}
               </div>
 
               <div className="absolute top-6 right-6 flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
@@ -384,20 +364,15 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
                 <GaugeCircle size={48} />
               </div>
               <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">Atualizar KM</h3>
-              <p className="text-slate-500 font-bold text-sm mt-2">Qual é o KM atual do veículo ao finalizar esta viagem?</p>
+              <p className="text-slate-500 font-bold text-sm mt-2">Qual o KM final do veículo?</p>
             </div>
-            
             <div className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase text-slate-400 ml-1">KM Atual do Painel</label>
-                <input 
-                  type="number" 
-                  className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-primary-500 rounded-3xl font-black text-3xl text-center outline-none" 
-                  value={newVehicleKm || ''} 
-                  onChange={e => setNewVehicleKm(Number(e.target.value))} 
-                />
-              </div>
-
+              <input 
+                type="number" 
+                className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-primary-500 rounded-3xl font-black text-3xl text-center outline-none" 
+                value={newVehicleKm || ''} 
+                onChange={e => setNewVehicleKm(Number(e.target.value))} 
+              />
               <div className="flex gap-3">
                 <button onClick={() => setIsKmModalOpen(false)} className="flex-1 py-5 border-2 rounded-3xl font-black uppercase text-xs text-slate-400">Cancelar</button>
                 <button onClick={confirmKmUpdate} className="flex-1 py-5 bg-emerald-600 text-white rounded-3xl font-black uppercase text-xs shadow-xl">Confirmar</button>
@@ -412,124 +387,98 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
           <div className="bg-white w-full max-w-2xl rounded-t-[4rem] md:rounded-[3rem] shadow-2xl animate-slide-up relative h-[92vh] md:h-auto overflow-y-auto pb-10">
             <div className="flex justify-between items-center p-6 md:p-10 pb-4">
               <div>
-                <span className="text-xs font-black uppercase text-primary-600 tracking-widest">Planejamento de Rota</span>
-                <h3 className="text-3xl font-black uppercase tracking-tighter mt-1 leading-none">{editingTripId ? 'Alterar Viagem' : 'Novo Frete'}</h3>
+                <span className="text-xs font-black uppercase text-primary-600 tracking-widest">Roteirização</span>
+                <h3 className="text-3xl font-black uppercase tracking-tighter mt-1 leading-none">{editingTripId ? 'Editar Viagem' : 'Novo Frete'}</h3>
               </div>
-              <button onClick={() => { resetForm(); setIsModalOpen(false); }} className="bg-slate-100 p-4 md:p-5 rounded-full text-slate-400 hover:text-slate-900 transition-all"><X size={28} /></button>
+              <button onClick={() => { resetForm(); setIsModalOpen(false); }} className="bg-slate-100 p-4 rounded-full text-slate-400"><X size={28} /></button>
             </div>
 
             <div className="p-5 md:p-10 space-y-8">
-              {!isOnline && (
-                 <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 text-[10px] font-black text-amber-700 uppercase tracking-widest flex items-center gap-3">
-                    <WifiOff size={16} /> Você está em modo offline. O salvamento será local.
-                 </div>
-              )}
-
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase text-slate-400 ml-1 flex items-center gap-2">
-                  <NotebookPen size={14}/> OBS / Descrição da Carga
+                  <NotebookPen size={14}/> Nome da Viagem / Carga
                 </label>
                 <input 
-                  placeholder="Ex: Carga de milho, Peças automotivas, Observações..." 
-                  className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-primary-500 rounded-2xl font-black text-lg outline-none transition-all" 
+                  placeholder="Ex: Carga de milho, Peças para SP..." 
+                  className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-primary-500 rounded-2xl font-black text-lg outline-none" 
                   value={formData.description} 
                   onChange={e => setFormData({...formData, description: e.target.value})} 
                 />
               </div>
 
-              <div className="space-y-4 bg-slate-50 p-4 md:p-8 rounded-[3rem] border border-slate-100">
+              <div className="space-y-4 bg-slate-50 p-6 rounded-[3rem] border border-slate-100">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Origem (Cidade/UF)</label>
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Origem</label>
                     <div className="flex gap-2">
-                      <input placeholder="Cidade" className="flex-1 p-4 md:p-5 bg-white rounded-2xl border-none font-bold outline-none focus:ring-2 focus:ring-primary-500" value={origin.city} onChange={e => setOrigin({...origin, city: e.target.value})} />
-                      <select className="w-20 md:w-24 p-4 md:p-5 bg-white rounded-2xl border-none font-bold outline-none" value={origin.state} onChange={e => setOrigin({...origin, state: e.target.value})}>
+                      <input placeholder="Cidade" className="flex-1 p-4 bg-white rounded-2xl border-none font-bold outline-none" value={origin.city} onChange={e => setOrigin({...origin, city: e.target.value})} />
+                      <select className="w-20 p-4 bg-white rounded-2xl border-none font-bold" value={origin.state} onChange={e => setOrigin({...origin, state: e.target.value})}>
                         {BRAZILIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Destino (Cidade/UF)</label>
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Destino</label>
                     <div className="flex gap-2">
-                      <input placeholder="Cidade" className="flex-1 p-4 md:p-5 bg-white rounded-2xl border-none font-bold outline-none focus:ring-2 focus:ring-primary-500" value={destination.city} onChange={e => setDestination({...destination, city: e.target.value})} />
-                      <select className="w-20 md:w-24 p-4 md:p-5 bg-white rounded-2xl border-none font-bold outline-none" value={destination.state} onChange={e => setDestination({...destination, state: e.target.value})}>
+                      <input placeholder="Cidade" className="flex-1 p-4 bg-white rounded-2xl border-none font-bold outline-none" value={destination.city} onChange={e => setDestination({...destination, city: e.target.value})} />
+                      <select className="w-20 p-4 bg-white rounded-2xl border-none font-bold" value={destination.state} onChange={e => setDestination({...destination, state: e.target.value})}>
                         {BRAZILIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-6 pt-6 border-t border-slate-200">
-                  <div className="flex justify-between items-center mb-3">
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1 flex items-center gap-2">
-                      <MapPinPlus size={14}/> Adicionar Rotas / Escalas (Opcional)
-                    </label>
-                  </div>
-                  
+                <div className="mt-4 pt-4 border-t border-slate-200">
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1 mb-3 block">Escalas / Paradas</label>
                   <div className="flex flex-wrap gap-2 mb-4">
                     {stops.map((stop, idx) => (
-                      <div key={idx} className="bg-white px-3 py-2 rounded-xl flex items-center gap-2 border border-slate-200 animate-fade-in shadow-sm">
-                        <span className="text-[10px] font-bold text-slate-700">{stop.city} - {stop.state}</span>
-                        <button onClick={() => removeStop(idx)} className="text-rose-400 hover:text-rose-600"><X size={14}/></button>
+                      <div key={idx} className="bg-white px-3 py-2 rounded-xl flex items-center gap-2 border shadow-sm">
+                        <span className="text-[10px] font-bold text-slate-700">{stop.city}-{stop.state}</span>
+                        <button onClick={() => removeStop(idx)} className="text-rose-400"><X size={14}/></button>
                       </div>
                     ))}
                   </div>
-                  
-                  <div className="flex gap-1 md:gap-2">
-                    <input placeholder="Cidade parada" className="flex-1 p-4 bg-white rounded-2xl border-none text-sm font-bold outline-none focus:ring-2 focus:ring-primary-500" value={newStop.city} onChange={e => setNewStop({...newStop, city: e.target.value})} />
-                    <select className="w-16 md:w-20 p-4 bg-white rounded-2xl border-none font-bold outline-none" value={newStop.state} onChange={e => setNewStop({...newStop, state: e.target.value})}>
+                  <div className="flex gap-2">
+                    <input placeholder="Cidade escala" className="flex-1 p-4 bg-white rounded-2xl border-none text-sm font-bold" value={newStop.city} onChange={e => setNewStop({...newStop, city: e.target.value})} />
+                    <select className="w-20 p-4 bg-white rounded-2xl border-none font-bold" value={newStop.state} onChange={e => setNewStop({...newStop, state: e.target.value})}>
                       {BRAZILIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
-                    <button onClick={addStop} className="p-4 bg-slate-900 text-white rounded-2xl hover:bg-black transition-all shrink-0">
-                      <Plus size={20}/>
-                    </button>
+                    <button onClick={addStop} className="p-4 bg-slate-900 text-white rounded-2xl"><Plus size={20}/></button>
                   </div>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase text-slate-400 ml-1 flex items-center gap-2">
-                  <Truck size={14} className="text-primary-500"/> Veículo da Viagem
-                </label>
-                <div className="relative">
-                  <select 
-                    className="w-full p-5 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-primary-500 font-bold appearance-none outline-none transition-all"
-                    value={formData.vehicle_id}
-                    onChange={e => setFormData({...formData, vehicle_id: e.target.value})}
-                  >
-                    <option value="">Selecione um Veículo</option>
-                    {vehicles.map(v => (
-                      <option key={v.id} value={v.id}>{v.plate} - {v.model}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={20} />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Data Partida</label>
-                  <input type="date" className="w-full p-5 bg-slate-50 rounded-2xl font-bold outline-none" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Veículo</label>
+                  <select 
+                    className="w-full p-5 bg-slate-50 rounded-2xl border-none font-bold outline-none"
+                    value={formData.vehicle_id}
+                    onChange={e => setFormData({...formData, vehicle_id: e.target.value})}
+                  >
+                    <option value="">Selecione...</option>
+                    {vehicles.map(v => <option key={v.id} value={v.id}>{v.plate} - {v.model}</option>)}
+                  </select>
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase text-slate-400 ml-1">KM Estimado</label>
-                  <input type="number" className="w-full p-5 bg-slate-50 rounded-2xl font-black text-2xl outline-none" value={formData.distance_km || ''} onChange={e => setFormData({...formData, distance_km: e.target.value === '' ? 0 : Number(e.target.value)})} />
+                  <input type="number" className="w-full p-5 bg-slate-50 rounded-2xl font-black text-2xl outline-none" value={formData.distance_km || ''} onChange={e => setFormData({...formData, distance_km: Number(e.target.value)})} />
                 </div>
               </div>
 
-              <div className="bg-slate-950 p-6 md:p-10 rounded-[3rem] text-white space-y-6">
-                <div className="flex justify-between items-center">
-                   <span className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">Acordo de Frete</span>
-                   <button onClick={suggestANTTPrice} className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-4 py-2 rounded-xl hover:bg-emerald-500/20 transition-all uppercase">Simular Piso</button>
+              <div className="bg-slate-950 p-8 rounded-[3rem] text-white">
+                <div className="flex justify-between items-center mb-6">
+                   <span className="text-[10px] font-black uppercase text-slate-500">Financeiro do Frete</span>
+                   <button onClick={suggestANTTPrice} className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-4 py-2 rounded-xl uppercase">Sugerir Piso ANTT</button>
                 </div>
-                <div className="grid grid-cols-2 gap-4 md:gap-6">
+                <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <p className="text-[10px] font-black uppercase text-slate-600">Frete Bruto</p>
-                    <input type="number" className="w-full p-5 bg-white/5 border border-white/10 rounded-2xl font-black text-2xl text-primary-400 outline-none" value={formData.agreed_price || ''} onChange={e => setFormData({...formData, agreed_price: e.target.value === '' ? 0 : Number(e.target.value)})} />
+                    <p className="text-[10px] font-black uppercase text-slate-600">Frete Bruto (R$)</p>
+                    <input type="number" className="w-full p-5 bg-white/5 border border-white/10 rounded-2xl font-black text-2xl text-primary-400 outline-none" value={formData.agreed_price || ''} onChange={e => setFormData({...formData, agreed_price: Number(e.target.value)})} />
                   </div>
                   <div className="space-y-2">
                     <p className="text-[10px] font-black uppercase text-slate-600">Comissão (%)</p>
-                    <input type="number" className="w-full p-5 bg-white/5 border border-white/10 rounded-2xl font-black text-2xl text-amber-400 outline-none" value={formData.driver_commission_percentage || ''} onChange={e => setFormData({...formData, driver_commission_percentage: e.target.value === '' ? 0 : Number(e.target.value)})} />
+                    <input type="number" className="w-full p-5 bg-white/5 border border-white/10 rounded-2xl font-black text-2xl text-amber-400 outline-none" value={formData.driver_commission_percentage || ''} onChange={e => setFormData({...formData, driver_commission_percentage: Number(e.target.value)})} />
                   </div>
                 </div>
               </div>
