@@ -211,20 +211,30 @@ const App: React.FC = () => {
     const alerts: DbNotification[] = [];
     const today = new Date();
     today.setHours(0,0,0,0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    // Define janela de 3 dias para frente
+    const daysAheadLimit = 3;
+    const futureLimitDate = new Date(today);
+    futureLimitDate.setDate(today.getDate() + daysAheadLimit);
 
-    // 1. Alertas de Viagem (Hoje e Amanhã)
+    // 1. Alertas de Viagem (Próximos 3 dias)
     trips.forEach(t => {
       if (t.status === TripStatus.SCHEDULED) {
         const tripDate = new Date(t.date + 'T00:00:00');
-        if (tripDate >= today && tripDate <= tomorrow) {
-          const isTomorrow = tripDate.getDate() === tomorrow.getDate();
+        if (tripDate >= today && tripDate <= futureLimitDate) {
+          const diffTime = tripDate.getTime() - today.getTime();
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          
+          let title = '';
+          if (diffDays === 0) title = 'Viagem Hoje';
+          else if (diffDays === 1) title = 'Viagem Amanhã';
+          else title = `Viagem em ${diffDays} dias`;
+
           alerts.push({
             id: `sys-trip-${t.id}`,
-            title: isTomorrow ? 'Viagem Amanhã' : 'Viagem Hoje',
+            title: title,
             message: `Preparar: ${t.origin.split('-')[0]} ➔ ${t.destination.split('-')[0]}`,
-            type: 'INFO',
+            type: diffDays <= 1 ? 'WARNING' : 'INFO',
             category: 'TRIP',
             created_at: new Date().toISOString(),
             sender: 'Assistente de Viagem'
@@ -233,13 +243,14 @@ const App: React.FC = () => {
       }
     });
 
-    // 2. Alertas Financeiros (Vencidos ou Vencendo Hoje)
+    // 2. Alertas Financeiros (Vencidos ou Vencendo em até 3 dias)
     expenses.forEach(e => {
       if (!e.is_paid && e.due_date) {
-        const dueDate = new Date(e.due_date + 'T12:00:00');
-        dueDate.setHours(0,0,0,0);
+        const dueDateObj = new Date(e.due_date + 'T12:00:00');
+        dueDateObj.setHours(0,0,0,0);
         
-        if (dueDate < today) {
+        if (dueDateObj < today) {
+          // Atrasado
           alerts.push({
             id: `sys-exp-late-${e.id}`,
             title: 'Conta em Atraso',
@@ -249,12 +260,30 @@ const App: React.FC = () => {
             created_at: new Date().toISOString(),
             sender: 'Financeiro'
           });
-        } else if (dueDate.getTime() === today.getTime()) {
+        } else if (dueDateObj <= futureLimitDate) {
+           // Vence hoje ou em breve (até 3 dias)
+           const diffTime = dueDateObj.getTime() - today.getTime();
+           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+           
+           let title = '';
+           let type: 'URGENT' | 'WARNING' | 'INFO' = 'INFO';
+
+           if (diffDays === 0) {
+              title = 'Vence Hoje';
+              type = 'URGENT';
+           } else if (diffDays === 1) {
+              title = 'Vence Amanhã';
+              type = 'WARNING';
+           } else {
+              title = `Vence em ${diffDays} dias`;
+              type = 'WARNING';
+           }
+
            alerts.push({
-            id: `sys-exp-today-${e.id}`,
-            title: 'Vence Hoje',
+            id: `sys-exp-soon-${e.id}`,
+            title: title,
             message: `Pagamento pendente: ${e.description}. R$ ${e.amount}`,
-            type: 'WARNING',
+            type: type,
             category: 'FINANCE',
             created_at: new Date().toISOString(),
             sender: 'Financeiro'
