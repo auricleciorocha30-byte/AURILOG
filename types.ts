@@ -156,9 +156,10 @@ export interface DbNotification {
   id: string;
   title: string;
   message: string;
+  sender?: string;
   type: 'URGENT' | 'WARNING' | 'INFO';
   category: 'JORNADA' | 'MAINTENANCE' | 'FINANCE' | 'TRIP' | 'GENERAL';
-  target_user_email?: string; // se nulo, envia para todos
+  target_user_email?: string; 
   created_at: string;
 }
 

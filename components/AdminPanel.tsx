@@ -34,7 +34,8 @@ import {
   X,
   Plus,
   User,
-  History
+  History,
+  UserCheck
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { RoadService, DbNotification, UserLocation, Trip, Expense, Vehicle, MaintenanceItem, Driver, TripStatus, CargoCategory } from '../types';
@@ -61,14 +62,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
   
   // Forms
   const [driverForm, setDriverForm] = useState({ name: '', email: '', password: '' });
-  const [alertForm, setAlertForm] = useState({ title: '', message: '', target_user_email: '', type: 'INFO' as any, category: 'GENERAL' as any });
+  const [alertForm, setAlertForm] = useState({ 
+    title: '', 
+    message: '', 
+    sender: 'Gestão Master',
+    target_user_email: '', 
+    type: 'INFO' as any, 
+    category: 'GENERAL' as any 
+  });
   const [partnerForm, setPartnerForm] = useState({ name: '', type: 'Posto de Combustível', address: '', location_url: '', phone: '', description: '' });
   const [categoryName, setCategoryName] = useState('');
   const [showCategoryModal, setShowCategoryModal] = useState(false);
 
   useEffect(() => { 
     loadAllAdminData();
-    // Refresh automático de localizações a cada 30s se estiver na aba de rastreamento
     const interval = setInterval(() => {
       if (activeTab === 'TRACKING') refreshLocations();
     }, 30000);
@@ -121,7 +128,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
     return { revenue, expense: totalExp, profit, fleet: allVehicles.length, drivers: drivers.length };
   }, [allTrips, allExpenses, allVehicles, allMaintenance, drivers]);
 
-  // Performance por motorista (Dashboard)
+  // Performance por motorista (Dashboard) organizada por nome/email
   const performanceByDriver = useMemo(() => {
     const map = new Map<string, { id: string, name: string, email: string, revenue: number, expense: number, trips: number, profit: number }>();
     
@@ -150,10 +157,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
     return Array.from(map.values()).map(s => ({
       ...s,
       profit: s.revenue - s.expense
-    })).sort((a, b) => b.revenue - a.revenue);
+    })).sort((a, b) => a.name.localeCompare(b.name));
   }, [drivers, allTrips, allExpenses]);
 
-  // CRUD Functions
   const handleAddCategory = async () => {
     if (!categoryName.trim()) return;
     setLoading(true);
@@ -202,19 +208,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
 
   const handleSendAlert = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!alertForm.sender.trim()) return alert("Informe o remetente do comunicado.");
     setLoading(true);
     try {
       const { error } = await supabase.from('notifications').insert([{
         title: alertForm.title,
         message: alertForm.message,
+        sender: alertForm.sender,
         type: alertForm.type,
         category: alertForm.category,
         target_user_email: alertForm.target_user_email === '' ? null : alertForm.target_user_email,
         created_at: new Date().toISOString()
       }]);
       if (error) throw error;
-      setAlertForm({ title: '', message: '', target_user_email: '', type: 'INFO', category: 'GENERAL' });
-      alert("Comunicado enviado!");
+      setAlertForm({ title: '', message: '', sender: 'Gestão Master', target_user_email: '', type: 'INFO', category: 'GENERAL' });
+      alert("Comunicado enviado com sucesso para a equipe!");
     } catch (err: any) { alert(err.message); } finally { setLoading(false); }
   };
 
@@ -240,7 +248,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
     link.click();
   };
 
-  // Mapeia motoristas com suas localizações
   const driversWithLocations = useMemo(() => {
     return drivers.map(d => {
       const loc = locations.find(l => l.user_id === d.id || l.email === d.email);
@@ -319,7 +326,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
 
              <div className="bg-white/5 p-10 rounded-[4rem] border border-white/10">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
-                   <h3 className="text-2xl font-black uppercase tracking-tight flex items-center gap-3"><ReceiptText className="text-amber-500"/> Performance Financeira</h3>
+                   <h3 className="text-2xl font-black uppercase tracking-tight flex items-center gap-3"><ReceiptText className="text-amber-500"/> Performance Financeira por Motorista</h3>
                    <button onClick={exportData} className="flex items-center gap-2 px-6 py-3 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest"><Download size={16}/> Exportar Dados</button>
                 </div>
                 <div className="space-y-4">
@@ -380,7 +387,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                        <div 
                          key={driver.id} 
                          onClick={() => setSelectedDriverId(driver.id)}
-                         className={`p-5 bg-slate-900 border cursor-pointer rounded-3xl flex justify-between items-center transition-all ${selectedDriverId === driver.id ? 'border-amber-500 ring-2 ring-amber-500/20' : 'border-white/5 hover:border-white/20'}`}
+                         className={`p-5 bg-slate-900 border cursor-pointer rounded-3xl flex justify-between items-center transition-all ${selectedDriverId === driver.id ? 'border-amber-500 ring-2 ring-amber-500/20 shadow-xl shadow-amber-500/10' : 'border-white/5 hover:border-white/20'}`}
                        >
                           <div className="flex-1 overflow-hidden">
                              <div className="flex items-center gap-2">
@@ -408,7 +415,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                  {selectedDriverData?.location ? (
                     <iframe 
                       title="Live Tracking" 
-                      className="w-full h-full border-0 grayscale invert opacity-60" 
+                      className="w-full h-full border-0 grayscale invert opacity-60 transition-all" 
                       src={`https://maps.google.com/maps?q=${selectedDriverData.location.latitude},${selectedDriverData.location.longitude}&z=15&output=embed`} 
                     />
                  ) : (
@@ -448,7 +455,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                  </form>
               </div>
               <div className="bg-white/5 p-10 rounded-[4rem] border border-white/10">
-                 <h3 className="text-2xl font-black mb-8 uppercase tracking-tighter">Condutores Ativos</h3>
+                 <h3 className="text-2xl font-black mb-8 uppercase tracking-tighter">Condutores Cadastrados</h3>
                  <div className="space-y-4 max-h-[500px] overflow-y-auto pr-4 custom-scrollbar">
                     {drivers.map(d => (
                        <div key={d.id} className="p-6 bg-slate-900/50 border border-white/5 rounded-3xl flex justify-between items-center group hover:border-white/10 transition-all">
@@ -470,7 +477,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
         {activeTab === 'FLEET' && (
           <div className="bg-white/5 p-10 rounded-[4rem] border border-white/10 animate-fade-in">
              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
-                <h3 className="text-2xl font-black uppercase tracking-tight flex items-center gap-3"><Truck className="text-amber-500"/> Inventário de Frota</h3>
+                <h3 className="text-2xl font-black uppercase tracking-tight flex items-center gap-3"><Truck className="text-amber-500"/> Inventário de Frota Ativa</h3>
                 <span className="bg-white/5 px-6 py-2 rounded-full text-[10px] font-black text-slate-400 uppercase tracking-widest">{allVehicles.length} Unidades Registradas</span>
              </div>
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -502,7 +509,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
         {activeTab === 'PARTNERS' && (
            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fade-in">
               <div className="bg-white/5 p-10 rounded-[4rem] border border-white/10">
-                 <h3 className="text-2xl font-black mb-8 uppercase tracking-tight flex items-center gap-3"><Store className="text-amber-500"/> Nova Parceria / Radar</h3>
+                 <h3 className="text-2xl font-black mb-8 uppercase tracking-tight flex items-center gap-3"><Store className="text-amber-500"/> Nova Parceria no Radar</h3>
                  <form onSubmit={handleAddPartner} className="space-y-6">
                     <input required placeholder="Nome do Estabelecimento" className="w-full p-6 bg-slate-900 rounded-3xl border-none outline-none font-bold text-white focus:ring-2 focus:ring-amber-500/50" value={partnerForm.name} onChange={e => setPartnerForm({...partnerForm, name: e.target.value})} />
                     <select className="w-full p-6 bg-slate-900 rounded-3xl border-none outline-none font-black uppercase text-[10px] text-white focus:ring-2 focus:ring-amber-500/50" value={partnerForm.type} onChange={e => setPartnerForm({...partnerForm, type: e.target.value})}>
@@ -518,7 +525,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                  </form>
               </div>
               <div className="bg-white/5 p-10 rounded-[4rem] border border-white/10">
-                 <h3 className="text-2xl font-black mb-8 uppercase tracking-tight">Rede de Serviços</h3>
+                 <h3 className="text-2xl font-black mb-8 uppercase tracking-tight">Rede de Serviços Ativa</h3>
                  <div className="space-y-4 max-h-[500px] overflow-y-auto pr-4 custom-scrollbar">
                     {roadServices.map(s => (
                        <div key={s.id} className="p-6 bg-slate-900/50 border border-white/5 rounded-3xl flex justify-between items-center group hover:border-white/10 transition-all">
@@ -542,9 +549,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
         {activeTab === 'ALERTS' && (
            <div className="max-w-4xl mx-auto animate-fade-in">
               <div className="bg-white/5 p-10 rounded-[4rem] border border-white/10">
-                 <h3 className="text-2xl font-black mb-8 flex items-center gap-3 uppercase tracking-tighter"><Bell className="text-amber-500" size={28}/> Transmissão Geral</h3>
+                 <h3 className="text-2xl font-black mb-8 flex items-center gap-3 uppercase tracking-tighter"><Bell className="text-amber-500" size={28}/> Transmissão de Comunicado</h3>
                  <form onSubmit={handleSendAlert} className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                       <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase text-slate-500 ml-1 tracking-widest">Remetente</label>
+                          <input required placeholder="Ex: Logística" className="w-full p-6 bg-slate-900 border-none rounded-3xl font-bold text-white outline-none focus:ring-2 focus:ring-amber-500/50 transition-all" value={alertForm.sender} onChange={e => setAlertForm({...alertForm, sender: e.target.value})} />
+                       </div>
                        <div className="space-y-2">
                           <label className="text-[10px] font-black uppercase text-slate-500 ml-1 tracking-widest">Prioridade</label>
                           <select className="w-full p-6 bg-slate-900 border-none rounded-3xl font-black uppercase text-[10px] text-white outline-none focus:ring-2 focus:ring-amber-500/50" value={alertForm.type} onChange={e => setAlertForm({...alertForm, type: e.target.value})}>
@@ -563,8 +574,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                           </select>
                        </div>
                     </div>
-                    <input required placeholder="Título do Comunicado" className="w-full p-6 bg-slate-900 border-none rounded-3xl font-bold text-white outline-none focus:ring-2 focus:ring-amber-500/50" value={alertForm.title} onChange={e => setAlertForm({...alertForm, title: e.target.value})} />
-                    <textarea required rows={4} placeholder="Sua mensagem para a equipe..." className="w-full p-6 bg-slate-900 border-none rounded-3xl font-bold text-white outline-none focus:ring-2 focus:ring-amber-500/50 resize-none" value={alertForm.message} onChange={e => setAlertForm({...alertForm, message: e.target.value})} />
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black uppercase text-slate-500 ml-1 tracking-widest">Título do Comunicado</label>
+                       <input required placeholder="Título curto e direto" className="w-full p-6 bg-slate-900 border-none rounded-3xl font-bold text-white outline-none focus:ring-2 focus:ring-amber-500/50" value={alertForm.title} onChange={e => setAlertForm({...alertForm, title: e.target.value})} />
+                    </div>
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black uppercase text-slate-500 ml-1 tracking-widest">Conteúdo da Mensagem</label>
+                       <textarea required rows={4} placeholder="Descreva os detalhes do comunicado para a equipe..." className="w-full p-6 bg-slate-900 border-none rounded-3xl font-bold text-white outline-none focus:ring-2 focus:ring-amber-500/50 resize-none" value={alertForm.message} onChange={e => setAlertForm({...alertForm, message: e.target.value})} />
+                    </div>
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black uppercase text-slate-500 ml-1 tracking-widest">Destinatário (Vazio = Toda Equipe)</label>
+                       <select className="w-full p-6 bg-slate-900 border-none rounded-3xl font-bold text-white outline-none focus:ring-2 focus:ring-amber-500/50" value={alertForm.target_user_email} onChange={e => setAlertForm({...alertForm, target_user_email: e.target.value})}>
+                          <option value="">Enviar para Todos os Motoristas</option>
+                          {drivers.map(d => <option key={d.id} value={d.email}>{d.name} ({d.email})</option>)}
+                       </select>
+                    </div>
                     <button type="submit" disabled={loading} className="w-full py-6 bg-white text-slate-950 rounded-3xl font-black uppercase text-xs shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3">
                        {loading ? <Loader2 className="animate-spin" /> : <Send size={18}/>} Transmitir para Equipe
                     </button>
@@ -587,28 +611,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                           <button onClick={() => handleDeleteCategory(cat.id)} className="p-2 text-slate-500 hover:text-rose-500 transition-all opacity-0 group-hover:opacity-100"><Trash2 size={16}/></button>
                        </div>
                     ))}
-                    <button onClick={() => setShowCategoryModal(true)} className="w-full py-4 border-2 border-dashed border-white/10 rounded-2xl text-[10px] font-black uppercase text-slate-500 mt-4">+ Nova Categoria</button>
+                    <button onClick={() => setShowCategoryModal(true)} className="w-full py-4 border-2 border-dashed border-white/10 rounded-2xl text-[10px] font-black uppercase text-slate-500 mt-4">+ Nova Categoria de Carga</button>
                  </div>
               </div>
               <div className="bg-white/5 p-10 rounded-[4rem] border border-white/10">
-                 <h3 className="text-2xl font-black mb-6 uppercase flex items-center gap-3 tracking-tighter"><Settings className="text-amber-500" size={28}/> Sistema</h3>
+                 <h3 className="text-2xl font-black mb-6 uppercase flex items-center gap-3 tracking-tighter"><Settings className="text-amber-500" size={28}/> Sistema Geral</h3>
                  <div className="space-y-6">
                     <div className="flex justify-between items-center py-6 border-b border-white/5">
                        <div>
-                          <p className="font-bold text-sm uppercase tracking-tighter">Backup Master</p>
-                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Dados criptografados na nuvem</p>
+                          <p className="font-bold text-sm uppercase tracking-tighter">Backup Centralizado</p>
+                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Sincronização redundante ativa</p>
                        </div>
                        <div className="w-12 h-6 bg-emerald-500 rounded-full flex items-center px-1"><div className="w-4 h-4 bg-white rounded-full ml-auto"></div></div>
                     </div>
                     <div className="flex justify-between items-center py-6 border-b border-white/5">
                        <div>
-                          <p className="font-bold text-sm uppercase tracking-tighter">Logs de Auditoria</p>
-                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Rastreio de alterações operacionais</p>
+                          <p className="font-bold text-sm uppercase tracking-tighter">Monitor de Auditoria</p>
+                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Registro de logs administrativos</p>
                        </div>
                        <div className="w-12 h-6 bg-amber-500 rounded-full flex items-center px-1"><div className="w-4 h-4 bg-white rounded-full ml-auto"></div></div>
                     </div>
                  </div>
-                 <button onClick={() => { if(confirm("Deseja mesmo limpar todos os comunicados?")) supabase.from('notifications').delete().not('id', 'is', null).then(loadAllAdminData) }} className="w-full mt-10 py-4 border-2 border-rose-500/20 text-rose-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-500 hover:text-white transition-all">Limpar Alertas de Sistema</button>
+                 <button onClick={() => { if(confirm("Deseja mesmo limpar todos os comunicados antigos?")) supabase.from('notifications').delete().not('id', 'is', null).then(loadAllAdminData) }} className="w-full mt-10 py-4 border-2 border-rose-500/20 text-rose-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-500 hover:text-white transition-all">Limpar Histórico de Alertas</button>
               </div>
            </div>
         )}
@@ -624,11 +648,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                </div>
                <div className="space-y-6">
                   <div className="space-y-2">
-                     <label className="text-[10px] font-black uppercase text-slate-500 ml-1 tracking-widest">Descrição</label>
+                     <label className="text-[10px] font-black uppercase text-slate-500 ml-1 tracking-widest">Descrição da Carga</label>
                      <input 
                         autoFocus
                         className="w-full p-5 bg-slate-950 border border-white/10 rounded-3xl font-bold outline-none focus:border-amber-500 text-white" 
-                        placeholder="Ex: Carga Frágil"
+                        placeholder="Ex: Grãos"
                         value={categoryName}
                         onChange={e => setCategoryName(e.target.value)}
                         onKeyPress={e => e.key === 'Enter' && handleAddCategory()}

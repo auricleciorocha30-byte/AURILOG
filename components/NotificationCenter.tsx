@@ -1,14 +1,14 @@
 
 import React from 'react';
-import { X, Bell, AlertTriangle, Clock, Calendar, Gauge, CreditCard, CheckCircle2, ChevronRight, Trash2, MessageCircle, Info, ShieldAlert } from 'lucide-react';
+import { X, Bell, AlertTriangle, Clock, Calendar, Gauge, CreditCard, CheckCircle2, ChevronRight, Trash2, MessageCircle, Info, ShieldAlert, UserCheck } from 'lucide-react';
 
 interface Notification {
   id: string;
   type: 'URGENT' | 'WARNING' | 'INFO';
   title: string;
   message: string;
+  sender?: string;
   category: 'JORNADA' | 'MAINTENANCE' | 'FINANCE' | 'TRIP' | 'GENERAL';
-  // Fix: renamed from date to created_at to match usage on line 81 and DbNotification
   created_at: string;
   target_user_email?: string;
 }
@@ -71,8 +71,10 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notifica
                     <div className="flex flex-wrap items-center gap-2 mb-1">
                       <h4 className="font-black text-slate-900 text-sm uppercase tracking-tighter">{n.title}</h4>
                       <span className="text-[7px] font-black px-2 py-0.5 rounded-full bg-slate-200 text-slate-500 uppercase tracking-widest">{n.category || 'GERAL'}</span>
-                      {n.target_user_email && (
-                        <span className="text-[7px] font-black px-2 py-0.5 rounded-full bg-primary-100 text-primary-600 uppercase tracking-widest">PRIVADO</span>
+                      {n.sender && (
+                        <div className="flex items-center gap-1 text-[7px] font-black px-2 py-0.5 rounded-full bg-primary-100 text-primary-600 uppercase tracking-widest">
+                          <UserCheck size={8}/> {n.sender}
+                        </div>
                       )}
                     </div>
                     
