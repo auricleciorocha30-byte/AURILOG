@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Trip, TripStatus, Vehicle, TripStop, Expense } from '../types';
-import { Plus, MapPin, Calendar, Truck, UserCheck, Navigation, X, Trash2, Map as MapIcon, ChevronRight, Percent, Loader2, Edit2, DollarSign, MessageSquare, Sparkles, Wand2, PlusCircle, ExternalLink, CheckSquare, Gauge, Utensils, Construction, MapPinPlus, ShieldCheck, ChevronDown, AlignLeft, CheckCircle2, Package, NotebookPen, GaugeCircle, MapPinned, ReceiptText, Wifi, WifiOff, CloudUpload, Clock, Smartphone, LocateFixed } from 'lucide-react';
+import { Plus, MapPin, Calendar, Truck, UserCheck, Navigation, X, Trash2, Map as MapIcon, ChevronRight, Percent, Loader2, Edit2, DollarSign, MessageSquare, Sparkles, Wand2, PlusCircle, ExternalLink, CheckSquare, Gauge, Utensils, Construction, MapPinPlus, ShieldCheck, ChevronDown, AlignLeft, CheckCircle2, Package, NotebookPen, GaugeCircle, MapPinned, ReceiptText, Wifi, WifiOff, CloudUpload, Clock, Smartphone, LocateFixed, MapPinCheck } from 'lucide-react';
 import { calculateANTT } from '../services/anttService';
 
 interface TripManagerProps {
@@ -36,8 +36,9 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
   const [pendingStatusUpdate, setPendingStatusUpdate] = useState<{id: string, status: TripStatus, vehicleId?: string} | null>(null);
   const [newVehicleKm, setNewVehicleKm] = useState<number>(0);
   
-  // Estado para o seletor de mapa
+  // Estado para o seletor de mapa (Tanto na lista quanto no modal)
   const [routeMenuId, setRouteMenuId] = useState<string | null>(null);
+  const [isPreviewRouteOpen, setIsPreviewRouteOpen] = useState(false);
   
   const [origin, setOrigin] = useState({ city: '', state: 'SP' });
   const [destination, setDestination] = useState({ city: '', state: 'SP' });
@@ -108,25 +109,27 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
     setStops(stops.filter((_, i) => i !== index));
   };
 
-  // Funções de Roteirização
-  const openGoogleMaps = (trip: Trip) => {
-    const originStr = `${trip.origin}, Brasil`.replace(' - ', ', ');
-    const destStr = `${trip.destination}, Brasil`.replace(' - ', ', ');
+  // Funções de Roteirização (Unificadas para lista e preview)
+  const openGoogleMaps = (tripOrigin: string, tripDest: string, tripStops: TripStop[]) => {
+    const originStr = `${tripOrigin}, Brasil`.replace(' - ', ', ');
+    const destStr = `${tripDest}, Brasil`.replace(' - ', ', ');
     let url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originStr)}&destination=${encodeURIComponent(destStr)}&travelmode=driving`;
     
-    if (trip.stops && trip.stops.length > 0) {
-      const waypointsStr = trip.stops.map(s => `${s.city}, ${s.state}, Brasil`).join('|');
+    if (tripStops && tripStops.length > 0) {
+      const waypointsStr = tripStops.map(s => `${s.city}, ${s.state}, Brasil`).join('|');
       url += `&waypoints=${encodeURIComponent(waypointsStr)}`;
     }
     window.open(url, '_blank');
     setRouteMenuId(null);
+    setIsPreviewRouteOpen(false);
   };
 
-  const openWaze = (trip: Trip) => {
-    const destStr = `${trip.destination}, Brasil`.replace(' - ', ', ');
+  const openWaze = (tripDest: string) => {
+    const destStr = `${tripDest}, Brasil`.replace(' - ', ', ');
     const url = `https://www.waze.com/ul?q=${encodeURIComponent(destStr)}&navigate=yes`;
     window.open(url, '_blank');
     setRouteMenuId(null);
+    setIsPreviewRouteOpen(false);
   };
 
   const suggestANTTPrice = () => {
@@ -192,7 +195,7 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
 
   const handleSave = async () => {
     if (!origin.city || !destination.city || !formData.distance_km || !formData.agreed_price) {
-      alert("Preencha campos obrigatórios.");
+      alert("Preencha campos obrigatórios: Origem, Destino, Distância e Frete.");
       return;
     }
     const payload = {
@@ -221,7 +224,7 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
       resetForm();
     } catch (err) {
       console.error("Erro ao salvar viagem:", err);
-      alert("Erro ao salvar. Tente atualizar a página ou verifique o banco de dados.");
+      alert("Erro ao salvar. Verifique se o banco de dados está atualizado com a coluna 'description'.");
     }
   };
 
@@ -231,7 +234,7 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
         <div>
           <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">Minhas Viagens</h2>
           <div className="flex items-center gap-2 mt-1">
-             <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Status e Roteirização</p>
+             <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Controle Operacional</p>
              <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-black uppercase ${isOnline ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
                 {isOnline ? <Wifi size={10} /> : <WifiOff size={10} />}
                 {isOnline ? 'Sincronizado' : 'Modo Offline'}
@@ -249,9 +252,6 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
           const isAtrasada = trip.status === TripStatus.SCHEDULED && trip.date < getTodayLocal();
           const isHoje = trip.status === TripStatus.SCHEDULED && trip.date === getTodayLocal();
           const isPending = (trip as any).sync_status === 'pending';
-          const tripExpensesTotal = expenses
-            .filter(e => e.trip_id === trip.id)
-            .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
           return (
             <div key={trip.id} className={`bg-white p-6 md:p-8 rounded-[3rem] border-2 shadow-sm relative group animate-fade-in transition-all ${isAtrasada ? 'border-rose-200 ring-4 ring-rose-50' : isHoje ? 'border-primary-200 ring-4 ring-primary-50' : 'border-slate-50'}`}>
@@ -325,14 +325,13 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
                  </div>
               </div>
 
-              {/* Botão de Rota com Seletor */}
               <div className="mt-6 relative">
                 {routeMenuId === trip.id ? (
                   <div className="bg-slate-900 rounded-2xl p-2 flex flex-col gap-1 animate-fade-in shadow-xl">
-                    <button onClick={() => openGoogleMaps(trip)} className="flex items-center justify-between w-full p-4 bg-white/5 hover:bg-white/10 rounded-xl text-white font-black text-[10px] uppercase transition-all">
+                    <button onClick={() => openGoogleMaps(trip.origin, trip.destination, trip.stops || [])} className="flex items-center justify-between w-full p-4 bg-white/5 hover:bg-white/10 rounded-xl text-white font-black text-[10px] uppercase transition-all">
                       Abrir no Google Maps <MapIcon size={16} className="text-primary-400" />
                     </button>
-                    <button onClick={() => openWaze(trip)} className="flex items-center justify-between w-full p-4 bg-white/5 hover:bg-white/10 rounded-xl text-white font-black text-[10px] uppercase transition-all">
+                    <button onClick={() => openWaze(trip.destination)} className="flex items-center justify-between w-full p-4 bg-white/5 hover:bg-white/10 rounded-xl text-white font-black text-[10px] uppercase transition-all">
                       Abrir no Waze <Smartphone size={16} className="text-blue-400" />
                     </button>
                     <button onClick={() => setRouteMenuId(null)} className="w-full py-2 text-slate-500 font-black text-[8px] uppercase">Cancelar</button>
@@ -407,6 +406,36 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
               </div>
 
               <div className="space-y-4 bg-slate-50 p-6 rounded-[3rem] border border-slate-100">
+                <div className="flex justify-between items-center mb-2 px-1">
+                   <h4 className="text-[10px] font-black uppercase text-slate-400">Rota Principal</h4>
+                   {origin.city && destination.city && (
+                     <div className="relative">
+                        <button 
+                          onClick={() => setIsPreviewRouteOpen(!isPreviewRouteOpen)}
+                          className="flex items-center gap-2 text-[10px] font-black uppercase text-primary-600 bg-primary-50 px-4 py-2 rounded-xl"
+                        >
+                          <MapPinCheck size={14}/> Ver Rota no Mapa
+                        </button>
+                        {isPreviewRouteOpen && (
+                          <div className="absolute right-0 top-full mt-2 bg-slate-900 rounded-2xl p-2 w-48 shadow-2xl z-50 animate-fade-in border border-white/10">
+                             <button 
+                                onClick={() => openGoogleMaps(`${origin.city} - ${origin.state}`, `${destination.city} - ${destination.state}`, stops)}
+                                className="w-full text-left p-3 hover:bg-white/10 rounded-xl text-white font-black text-[9px] uppercase flex items-center justify-between"
+                             >
+                                Google Maps <MapIcon size={12}/>
+                             </button>
+                             <button 
+                                onClick={() => openWaze(`${destination.city} - ${destination.state}`)}
+                                className="w-full text-left p-3 hover:bg-white/10 rounded-xl text-white font-black text-[9px] uppercase flex items-center justify-between"
+                             >
+                                Waze <Smartphone size={12}/>
+                             </button>
+                          </div>
+                        )}
+                     </div>
+                   )}
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Origem</label>
@@ -429,7 +458,7 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
                 </div>
 
                 <div className="mt-4 pt-4 border-t border-slate-200">
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1 mb-3 block">Escalas / Paradas</label>
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1 mb-3 block">Escalas / Paradas Intermediárias</label>
                   <div className="flex flex-wrap gap-2 mb-4">
                     {stops.map((stop, idx) => (
                       <div key={idx} className="bg-white px-3 py-2 rounded-xl flex items-center gap-2 border shadow-sm">
@@ -461,7 +490,7 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">KM Estimado</label>
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Distância (KM)</label>
                   <input type="number" className="w-full p-5 bg-slate-50 rounded-2xl font-black text-2xl outline-none" value={formData.distance_km || ''} onChange={e => setFormData({...formData, distance_km: Number(e.target.value)})} />
                 </div>
               </div>
