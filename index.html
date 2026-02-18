@@ -3,15 +3,16 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=0" />
     <meta name="theme-color" content="#4f46e5" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="AuriLog" />
+    <meta name="mobile-web-app-capable" content="yes" />
     
     <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/2312/2312487.png">
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2312/2312487.png">
-    <link rel="manifest" href="./manifest.json">
+    <link rel="manifest" href="/manifest.json">
     
     <title>AuriLog - Gestão de Cargas</title>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -49,10 +50,12 @@
       ::-webkit-scrollbar { width: 0px; }
       
       html, body {
-        position: fixed;
-        overflow: hidden;
         width: 100%;
         height: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        overscroll-behavior: none;
       }
       #root {
         width: 100%;
@@ -70,7 +73,7 @@
     "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
     "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
     "react/": "https://esm.sh/react@^19.2.4/",
-    "react": "https://esm.sh/react@^19.2.4",
+    "react": "https://esm.sh/react@^19.2.4/",
     "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
     "vite": "https://esm.sh/vite@^7.3.1",
     "idb": "https://esm.sh/idb@^8.0.3",
@@ -85,9 +88,9 @@
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('./sw.js').catch(err => {
-            console.log('SW registration failed: ', err);
-          });
+          navigator.serviceWorker.register('/sw.js', { scope: '/' })
+            .then(reg => console.log('SW pronto!', reg.scope))
+            .catch(err => console.log('Erro SW:', err));
         });
       }
     </script>

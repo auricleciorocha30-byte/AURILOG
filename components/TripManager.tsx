@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Trip, TripStatus, Vehicle, TripStop, Expense } from '../types';
-import { Plus, MapPin, Calendar, Truck, UserCheck, Navigation, X, Trash2, Map as MapIcon, ChevronRight, Percent, Loader2, Edit2, DollarSign, MessageSquare, Sparkles, Wand2, PlusCircle, ExternalLink, CheckSquare, Gauge, Utensils, Construction, MapPinPlus, ShieldCheck, ChevronDown, AlignLeft, CheckCircle2, Package, NotebookPen, GaugeCircle, MapPinned, ReceiptText, Wifi, WifiOff, CloudUpload, Clock, Smartphone, LocateFixed, MapPinCheck, Calculator } from 'lucide-react';
+import { Plus, MapPin, Calendar, Truck, Navigation, X, Trash2, Map as MapIcon, Edit2, DollarSign, Loader2, CheckCircle2, Calculator, Wifi, WifiOff, Smartphone, MapPinCheck, Percent, Wallet, ReceiptText, TrendingUp, TrendingDown } from 'lucide-react';
 import { calculateANTT } from '../services/anttService';
 
 interface TripManagerProps {
@@ -42,7 +42,6 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
   const [origin, setOrigin] = useState({ city: '', state: 'SP' });
   const [destination, setDestination] = useState({ city: '', state: 'SP' });
   const [stops, setStops] = useState<TripStop[]>([]);
-  const [newStop, setNewStop] = useState({ city: '', state: 'SP' });
 
   const [formData, setFormData] = useState<any>({
     description: '',
@@ -55,6 +54,11 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
     status: TripStatus.SCHEDULED,
     notes: ''
   });
+
+  // Cálculo de Custos Fixos Totais
+  const totalFixedExpenses = useMemo(() => {
+    return expenses.filter(e => !e.trip_id).reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
+  }, [expenses]);
 
   const sortedTrips = useMemo(() => {
     return [...trips].sort((a, b) => {
@@ -101,7 +105,6 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
     }
     window.open(url, '_blank');
     setRouteMenuId(null);
-    setIsPreviewRouteOpen(false);
   };
 
   const openWaze = (tripDest: string) => {
@@ -109,7 +112,6 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
     const url = `https://www.waze.com/ul?q=${encodeURIComponent(destStr)}&navigate=yes`;
     window.open(url, '_blank');
     setRouteMenuId(null);
-    setIsPreviewRouteOpen(false);
   };
 
   const suggestANTTPrice = () => {
@@ -196,11 +198,31 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
 
   return (
     <div className="space-y-6 pb-20 max-w-7xl mx-auto animate-fade-in">
+      {/* Resumo de Custos Fixos no Topo */}
+      <div className="px-4">
+        <div className="bg-slate-900 p-6 rounded-[2.5rem] border border-white/5 shadow-2xl flex flex-col md:flex-row justify-between items-center gap-6">
+          <div className="flex items-center gap-4">
+            <div className="p-4 bg-primary-600/20 text-primary-400 rounded-2xl border border-primary-500/20">
+              <Wallet size={24} />
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Despesas Fixas Acumuladas</p>
+              <p className="text-2xl font-black text-white">R$ {totalFixedExpenses.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+            </div>
+          </div>
+          <div className="h-px w-full md:w-px md:h-12 bg-white/10"></div>
+          <div className="text-center md:text-right">
+             <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Status da Frota</p>
+             <p className="text-xs font-bold text-slate-300 mt-1 uppercase tracking-tight">{vehicles.length} veículos cadastrados</p>
+          </div>
+        </div>
+      </div>
+
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 px-4">
         <div>
           <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">Minhas Viagens</h2>
           <div className="flex items-center gap-2 mt-1">
-             <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Controle Operacional</p>
+             <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Controle de Fretes</p>
              <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-black uppercase ${isOnline ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
                 {isOnline ? <Wifi size={10} /> : <WifiOff size={10} />}
                 {isOnline ? 'Sincronizado' : 'Offline'}
@@ -213,54 +235,76 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 px-4">
-        {sortedTrips.map(trip => (
-          <div key={trip.id} className="bg-white p-6 md:p-8 rounded-[3rem] border-2 shadow-sm relative group animate-fade-in transition-all border-slate-50">
-            <div className="flex flex-col gap-6">
-               <div className="flex-1">
-                  <div className="flex flex-col items-start gap-2 mb-4 pr-20">
-                    <select value={trip.status} onChange={(e) => handleStatusChange(trip, e.target.value as TripStatus)} className={`text-[9px] font-black uppercase px-3 py-1.5 rounded-full border-none cursor-pointer ${trip.status === TripStatus.COMPLETED ? 'bg-emerald-100 text-emerald-700' : trip.status === TripStatus.IN_PROGRESS ? 'bg-blue-100 text-blue-700' : trip.status === TripStatus.CANCELLED ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700'}`}>
-                      {Object.values(TripStatus).map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                    <span className="text-[10px] md:text-xs font-black text-slate-400 flex items-center gap-1 uppercase">
-                      <Calendar size={12} /> {formatDateDisplay(trip.date)}
-                    </span>
-                  </div>
-                  <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter mb-4 leading-tight line-clamp-2">
-                    {trip.description || `${trip.origin.split(' - ')[0]} ➔ ${trip.destination.split(' - ')[0]}`}
-                  </h3>
-                  <div className="space-y-1 mb-4">
-                    <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-primary-500"></div><h4 className="text-sm font-black text-slate-700 truncate uppercase">{trip.origin}</h4></div>
-                    <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-rose-500"></div><h4 className="text-sm font-black text-slate-700 truncate uppercase">{trip.destination}</h4></div>
-                  </div>
-                  
-                  <div className="mt-4 p-3 bg-slate-50 rounded-2xl flex justify-between items-center">
-                    <div>
-                      <p className="text-[8px] font-black uppercase text-slate-400">Frete Bruto</p>
-                      <p className="text-sm font-black text-slate-900">R$ {trip.agreed_price.toLocaleString()}</p>
+        {sortedTrips.map(trip => {
+          // Cálculo de Despesas Vinculadas a ESTA viagem
+          const tripExpenses = expenses.filter(e => e.trip_id === trip.id);
+          const totalTripExpenses = tripExpenses.reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
+          const netProfit = trip.agreed_price - totalTripExpenses - trip.driver_commission;
+          const isProfitable = netProfit > 0;
+
+          return (
+            <div key={trip.id} className="bg-white p-6 md:p-8 rounded-[3rem] border-2 shadow-sm relative group animate-fade-in transition-all border-slate-50 hover:border-primary-100">
+              <div className="flex flex-col gap-6">
+                 <div className="flex-1">
+                    <div className="flex flex-col items-start gap-2 mb-4 pr-20">
+                      <select value={trip.status} onChange={(e) => handleStatusChange(trip, e.target.value as TripStatus)} className={`text-[9px] font-black uppercase px-3 py-1.5 rounded-full border-none cursor-pointer ${trip.status === TripStatus.COMPLETED ? 'bg-emerald-100 text-emerald-700' : trip.status === TripStatus.IN_PROGRESS ? 'bg-blue-100 text-blue-700' : trip.status === TripStatus.CANCELLED ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700'}`}>
+                        {Object.values(TripStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                      <span className="text-[10px] md:text-xs font-black text-slate-400 flex items-center gap-1 uppercase">
+                        <Calendar size={12} /> {formatDateDisplay(trip.date)}
+                      </span>
                     </div>
-                    <div className="text-right">
-                      <p className="text-[8px] font-black uppercase text-primary-400">Comissão ({trip.driver_commission_percentage}%)</p>
-                      <p className="text-sm font-black text-primary-600">R$ {trip.driver_commission.toLocaleString()}</p>
+                    <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter mb-4 leading-tight line-clamp-2">
+                      {trip.description || `${trip.origin.split(' - ')[0]} ➔ ${trip.destination.split(' - ')[0]}`}
+                    </h3>
+                    <div className="space-y-1 mb-4">
+                      <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-primary-500"></div><h4 className="text-sm font-black text-slate-700 truncate uppercase">{trip.origin}</h4></div>
+                      <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-rose-500"></div><h4 className="text-sm font-black text-slate-700 truncate uppercase">{trip.destination}</h4></div>
                     </div>
+                    
+                    {/* RESUMO FINANCEIRO NO CARD */}
+                    <div className="mt-4 p-4 bg-slate-50 rounded-3xl border border-slate-100">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-[8px] font-black uppercase text-slate-400 mb-1">Frete Bruto</p>
+                          <p className="text-sm font-black text-slate-900">R$ {trip.agreed_price.toLocaleString()}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[8px] font-black uppercase text-rose-400 mb-1">Gastos Viagem</p>
+                          <p className="text-sm font-black text-rose-600">R$ {totalTripExpenses.toLocaleString()}</p>
+                        </div>
+                        <div>
+                          <p className="text-[8px] font-black uppercase text-primary-400 mb-1">Comissão</p>
+                          <p className="text-sm font-black text-primary-600">R$ {trip.driver_commission.toLocaleString()}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[8px] font-black uppercase text-slate-400 mb-1">Lucro Líquido</p>
+                          <div className={`flex items-center justify-end gap-1 text-sm font-black ${isProfitable ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            {isProfitable ? <TrendingUp size={14}/> : <TrendingDown size={14}/>}
+                            R$ {netProfit.toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                 </div>
+              </div>
+              <div className="mt-6 relative">
+                <button onClick={() => setRouteMenuId(trip.id)} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase flex items-center justify-center gap-2 hover:bg-black shadow-lg transition-all active:scale-95"><Navigation size={14}/> Iniciar Rota GPS</button>
+                {routeMenuId === trip.id && (
+                  <div className="absolute inset-x-0 bottom-full mb-2 bg-slate-900 rounded-2xl p-2 flex flex-col gap-1 z-50 shadow-2xl border border-white/10">
+                    <button onClick={() => openGoogleMaps(trip.origin, trip.destination, trip.stops || [])} className="flex items-center justify-between w-full p-4 bg-white/5 hover:bg-white/10 rounded-xl text-white font-black text-[10px] uppercase">Google Maps <MapIcon size={16} /></button>
+                    <button onClick={() => openWaze(trip.destination)} className="flex items-center justify-between w-full p-4 bg-white/5 hover:bg-white/10 rounded-xl text-white font-black text-[10px] uppercase">Waze <Smartphone size={16} /></button>
+                    <button onClick={() => setRouteMenuId(null)} className="w-full py-2 text-slate-500 font-black text-[8px] uppercase">Cancelar</button>
                   </div>
-               </div>
+                )}
+              </div>
+              <div className="absolute top-6 right-6 flex items-center gap-1">
+                <button onClick={() => handleEdit(trip)} className="p-3 bg-white shadow-md rounded-full text-slate-400 hover:text-primary-600 transition-all"><Edit2 size={16}/></button>
+                <button onClick={() => { if(confirm('Excluir?')) onDeleteTrip(trip.id) }} className="p-3 bg-white shadow-md rounded-full text-slate-400 hover:text-rose-500 transition-all"><Trash2 size={16}/></button>
+              </div>
             </div>
-            <div className="mt-6 relative">
-              <button onClick={() => setRouteMenuId(trip.id)} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase flex items-center justify-center gap-2 hover:bg-black shadow-lg transition-all active:scale-95"><Navigation size={14}/> Iniciar Rota GPS</button>
-              {routeMenuId === trip.id && (
-                <div className="absolute inset-x-0 bottom-full mb-2 bg-slate-900 rounded-2xl p-2 flex flex-col gap-1 z-50 shadow-2xl border border-white/10">
-                  <button onClick={() => openGoogleMaps(trip.origin, trip.destination, trip.stops || [])} className="flex items-center justify-between w-full p-4 bg-white/5 hover:bg-white/10 rounded-xl text-white font-black text-[10px] uppercase">Google Maps <MapIcon size={16} /></button>
-                  <button onClick={() => openWaze(trip.destination)} className="flex items-center justify-between w-full p-4 bg-white/5 hover:bg-white/10 rounded-xl text-white font-black text-[10px] uppercase">Waze <Smartphone size={16} /></button>
-                  <button onClick={() => setRouteMenuId(null)} className="w-full py-2 text-slate-500 font-black text-[8px] uppercase">Cancelar</button>
-                </div>
-              )}
-            </div>
-            <div className="absolute top-6 right-6 flex items-center gap-1">
-              <button onClick={() => handleEdit(trip)} className="p-3 bg-white shadow-md rounded-full text-slate-400 hover:text-primary-600 transition-all"><Edit2 size={16}/></button>
-              <button onClick={() => { if(confirm('Excluir?')) onDeleteTrip(trip.id) }} className="p-3 bg-white shadow-md rounded-full text-slate-400 hover:text-rose-500 transition-all"><Trash2 size={16}/></button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {isModalOpen && (
@@ -340,7 +384,6 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
                 </div>
               </div>
 
-              {/* CAMPO DE COMISSÃO RESTAURADO */}
               <div className="bg-primary-50 p-6 rounded-[2.5rem] border border-primary-100 flex flex-col md:flex-row items-center justify-between gap-6">
                 <div className="flex-1 space-y-2 w-full">
                   <label className="text-[10px] font-black uppercase text-primary-600 ml-1 flex items-center gap-2">

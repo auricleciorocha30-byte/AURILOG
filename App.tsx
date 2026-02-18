@@ -33,18 +33,31 @@ import {
   Unlock,
   X,
   Menu,
-  AlertCircle
+  AlertCircle,
+  Download
 } from 'lucide-react';
 
 const App: React.FC = () => {
-  const queryParams = new URLSearchParams(window.location.search);
-  const isDriverContext = queryParams.get('mode') === 'driver';
+  // PERSISTÊNCIA DE CONTEXTO: Verifica se o modo está no URL ou no LocalStorage
+  const [appContext, setAppContext] = useState<'DRIVER' | 'ADMIN'>(() => {
+    const queryParams = new URLSearchParams(window.location.search);
+    const modeParam = queryParams.get('mode');
+    const savedMode = localStorage.getItem('aurilog_app_mode');
+    
+    if (modeParam === 'driver') {
+      localStorage.setItem('aurilog_app_mode', 'DRIVER');
+      return 'DRIVER';
+    }
+    if (modeParam === 'admin') {
+      localStorage.setItem('aurilog_app_mode', 'ADMIN');
+      return 'ADMIN';
+    }
+    return (savedMode as 'DRIVER' | 'ADMIN') || 'ADMIN';
+  });
 
   const [authRole, setAuthRole] = useState<'DRIVER' | 'ADMIN' | null>(() => {
     const savedRole = localStorage.getItem('aurilog_role') as 'DRIVER' | 'ADMIN' | null;
-    if (!savedRole) return null;
-    if (isDriverContext && savedRole === 'DRIVER') return 'DRIVER';
-    if (!isDriverContext && savedRole === 'ADMIN') return 'ADMIN';
+    if (savedRole === appContext) return savedRole;
     return null;
   });
 
@@ -80,106 +93,110 @@ const App: React.FC = () => {
   const [jornadaStartTime, setJornadaStartTime] = useState<number | null>(null);
   const [jornadaCurrentTime, setJornadaCurrentTime] = useState(0);
 
+  // PWA Install Prompt State
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     };
   }, []);
 
-  // Alertas Automáticos de Sistema
+  const installApp = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') setDeferredPrompt(null);
+    } else {
+      alert("Para instalar em iOS: Clique em Compartilhar e 'Adicionar à Tela de Início'.\nNo Android: Clique nos 3 pontos do Chrome e 'Instalar aplicativo'.");
+    }
+  };
+
+  // Lógica de Alertas e Notificações (mesma anterior...)
   const systemAlerts = useMemo(() => {
     if (authRole !== 'DRIVER' || !currentUser) return [];
     const alerts: any[] = [];
-    const todayStr = new Date().toISOString().split('T')[0];
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    const todayStr = today.toISOString().split('T')[0];
 
-    // Alertas de Despesas Vencidas
     expenses.filter(e => !e.is_paid && e.due_date).forEach(e => {
       const dueDate = new Date(e.due_date + 'T12:00:00');
-      const today = new Date();
-      today.setHours(12, 0, 0, 0);
-      
-      if (dueDate <= today) {
-        alerts.push({
-          id: `sys-exp-${e.id}`,
-          title: `Pagamento Pendente: ${e.description}`,
-          message: `A despesa de R$ ${e.amount.toLocaleString()} ${e.due_date === todayStr ? 'vence HOJE' : 'está VENCIDA'}.`,
-          type: 'URGENT',
-          category: 'FINANCE',
-          created_at: new Date().toISOString()
-        });
+      const diffDays = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      if (diffDays < 0) {
+        alerts.push({ id: `sys-exp-venc-${e.id}`, title: `CONTA VENCIDA: ${e.description}`, message: `O pagamento de R$ ${e.amount.toLocaleString()} está atrasado.`, type: 'URGENT', category: 'FINANCE', created_at: new Date().toISOString() });
+      } else if (diffDays <= 3) {
+        alerts.push({ id: `sys-exp-prox-${e.id}`, title: `VENCIMENTO PRÓXIMO: ${e.description}`, message: `Esta conta vence em ${diffDays === 0 ? 'HOJE' : diffDays + ' dias'}.`, type: diffDays === 0 ? 'URGENT' : 'WARNING', category: 'FINANCE', created_at: new Date().toISOString() });
       }
     });
 
-    // Alertas de Manutenção
     maintenance.forEach(m => {
       const vehicle = vehicles.find(v => v.id === m.vehicle_id);
       if (!vehicle) return;
-      
       const pDate = new Date(m.purchase_date + 'T12:00:00');
       const expiryDate = new Date(pDate);
       expiryDate.setMonth(pDate.getMonth() + (m.warranty_months || 0));
       const kmLimit = (m.km_at_purchase || 0) + (m.warranty_km || 0);
+      const kmRemaining = kmLimit - vehicle.current_km;
+      const daysRemaining = Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
       
-      if ((m.warranty_months > 0 && expiryDate < new Date()) || (m.warranty_km > 0 && vehicle.current_km >= kmLimit)) {
-        alerts.push({
-          id: `sys-maint-${m.id}`,
-          title: `Manutenção Vencida: ${m.part_name}`,
-          message: `A garantia/validade da peça no veículo ${vehicle.plate} expirou.`,
-          type: 'WARNING',
-          category: 'MAINTENANCE',
-          created_at: new Date().toISOString()
-        });
+      if (kmRemaining <= 0 || (m.warranty_months > 0 && daysRemaining <= 0)) {
+        alerts.push({ id: `sys-maint-venc-${m.id}`, title: `MANUTENÇÃO VENCIDA: ${m.part_name}`, message: `A vida útil expirou para ${vehicle.plate}.`, type: 'URGENT', category: 'MAINTENANCE', created_at: new Date().toISOString() });
+      } else if (kmRemaining <= 1000 || (m.warranty_months > 0 && daysRemaining <= 15)) {
+        alerts.push({ id: `sys-maint-prox-${m.id}`, title: `MANUTENÇÃO PRÓXIMA: ${m.part_name}`, message: `Troca recomendada em breve. Faltam ${kmRemaining}km ou ${daysRemaining} dias.`, type: 'WARNING', category: 'MAINTENANCE', created_at: new Date().toISOString() });
       }
     });
 
-    // Alertas de Viagens do Dia
-    trips.filter(t => t.date === todayStr && t.status === TripStatus.SCHEDULED).forEach(t => {
-      alerts.push({
-        id: `sys-trip-${t.id}`,
-        title: `Viagem Agendada para Hoje`,
-        message: `Você tem uma carga de ${t.origin.split(' - ')[0]} para ${t.destination.split(' - ')[0]} hoje.`,
-        type: 'INFO',
-        category: 'TRIP',
-        created_at: new Date().toISOString()
-      });
-    });
-
     return alerts;
-  }, [expenses, maintenance, trips, vehicles, authRole, currentUser]);
+  }, [expenses, maintenance, vehicles, authRole, currentUser]);
 
   const allNotifications = useMemo(() => {
     return [...systemAlerts, ...dbNotifications].filter(n => !dismissedIds.includes(n.id));
   }, [systemAlerts, dbNotifications, dismissedIds]);
 
-  // Rastreamento GPS
+  // Rastreamento GPS Otimizado para Mobile
   useEffect(() => {
     if (authRole === 'DRIVER' && currentUser && isOnline) {
-      const updateLocation = () => {
-        navigator.geolocation.getCurrentPosition(async (pos) => {
-          await supabase.from('user_locations').upsert({
-            user_id: currentUser.id,
-            email: currentUser.email,
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude,
-            updated_at: new Date().toISOString()
-          }, { onConflict: 'email' });
-        });
-      };
-      updateLocation();
-      const interval = setInterval(updateLocation, 30000);
-      return () => clearInterval(interval);
+      const options = { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 };
+      
+      const watchId = navigator.geolocation.watchPosition(
+        async (pos) => {
+          try {
+            await supabase.from('user_locations').upsert({
+              user_id: currentUser.id,
+              email: currentUser.email,
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude,
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'email' });
+          } catch (e) {
+            console.warn("Falha ao sincronizar GPS.");
+          }
+        },
+        (err) => console.warn("Erro GPS:", err.message),
+        options
+      );
+
+      return () => navigator.geolocation.clearWatch(watchId);
     }
   }, [authRole, currentUser, isOnline]);
 
   const fetchData = useCallback(async () => {
     if (!currentUser) return;
     const userId = currentUser.id;
-
     if (!isOnline) {
       const allTrips = await offlineStorage.getAll('trips');
       const allExpenses = await offlineStorage.getAll('expenses');
@@ -187,7 +204,6 @@ const App: React.FC = () => {
       setExpenses(allExpenses.filter((e: any) => e.user_id === userId));
       return;
     }
-
     try {
       const [tripsRes, expensesRes, vehiclesRes, maintenanceRes, jornadaRes, notificationsRes, servicesRes] = await Promise.all([
         supabase.from('trips').select('*').eq('user_id', userId).order('date', { ascending: false }),
@@ -198,7 +214,6 @@ const App: React.FC = () => {
         supabase.from('notifications').select('*').or(`target_user_email.is.null,target_user_email.eq.${currentUser.email}`).order('created_at', { ascending: false }),
         supabase.from('road_services').select('*').order('name', { ascending: true })
       ]);
-      
       if (tripsRes.data) setTrips(tripsRes.data);
       if (expensesRes.data) setExpenses(expensesRes.data);
       if (vehiclesRes.data) setVehicles(vehiclesRes.data);
@@ -206,14 +221,10 @@ const App: React.FC = () => {
       if (jornadaRes.data) setJornadaLogs(jornadaRes.data);
       if (notificationsRes.data) setDbNotifications(notificationsRes.data);
       if (servicesRes.data) setRoadServices(servicesRes.data);
-    } catch (error) {
-      console.warn("Modo Offline");
-    }
+    } catch (error) { console.warn("Modo Offline"); }
   }, [isOnline, currentUser]);
 
-  useEffect(() => {
-    if (currentUser) fetchData();
-  }, [fetchData, currentUser]);
+  useEffect(() => { if (currentUser) fetchData(); }, [fetchData, currentUser]);
 
   const handleAction = async (table: string, data: any, action: 'insert' | 'update' | 'delete') => {
     if (!currentUser) return;
@@ -236,19 +247,7 @@ const App: React.FC = () => {
       }
       if (response?.error) throw response.error;
       await fetchData();
-    } catch (error: any) {
-      alert(`Erro: ${error.message}`);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleDismissNotification = (id: string) => {
-    const nextDismissed = [...dismissedIds, id];
-    setDismissedIds(nextDismissed);
-    if (currentUser) {
-      localStorage.setItem(`dismissed_notifs_${currentUser.email}`, JSON.stringify(nextDismissed));
-    }
+    } catch (error: any) { alert(`Erro: ${error.message}`); } finally { setIsSaving(false); }
   };
 
   const handleLogin = async () => {
@@ -257,9 +256,10 @@ const App: React.FC = () => {
     if (!inputEmail || !inputPassword) return alert("Digite e-mail e senha.");
     setIsLoggingIn(true);
     try {
-      const table = isDriverContext ? 'drivers' : 'admins';
-      const role = isDriverContext ? 'DRIVER' : 'ADMIN';
-      if (!isDriverContext && inputEmail === 'admin@aurilog.com' && inputPassword === 'admin123') {
+      const table = appContext === 'DRIVER' ? 'drivers' : 'admins';
+      const role = appContext;
+      
+      if (appContext === 'ADMIN' && inputEmail === 'admin@aurilog.com' && inputPassword === 'admin123') {
         const masterUser = { id: '00000000-0000-0000-0000-000000000000', name: 'Gestor Master', email: 'admin@aurilog.com' };
         setCurrentUser(masterUser);
         setAuthRole('ADMIN');
@@ -267,18 +267,16 @@ const App: React.FC = () => {
         localStorage.setItem('aurilog_user', JSON.stringify(masterUser));
         return;
       }
+
       const { data: dbUser, error } = await supabase.from(table).select('*').eq('email', inputEmail).eq('password', inputPassword).maybeSingle();
       if (error) throw error;
       if (!dbUser) throw new Error("Credenciais inválidas.");
+
       setCurrentUser(dbUser);
       setAuthRole(role);
       localStorage.setItem('aurilog_role', role);
       localStorage.setItem('aurilog_user', JSON.stringify(dbUser));
-    } catch (err: any) {
-      alert(err.message);
-    } finally {
-      setIsLoggingIn(false);
-    }
+    } catch (err: any) { alert(err.message); } finally { setIsLoggingIn(false); }
   };
 
   const handleLogout = () => {
@@ -290,28 +288,40 @@ const App: React.FC = () => {
 
   if (!authRole) {
     return (
-      <div className={`min-h-screen ${isDriverContext ? 'bg-slate-50' : 'bg-slate-950'} flex flex-col items-center justify-center p-6 font-['Plus_Jakarta_Sans']`}>
+      <div className={`min-h-screen ${appContext === 'DRIVER' ? 'bg-slate-50' : 'bg-slate-950'} flex flex-col items-center justify-center p-6 font-['Plus_Jakarta_Sans']`}>
         <div className="w-full max-w-md space-y-8 animate-fade-in">
           <div className="text-center">
-             <div className={`inline-block p-4 ${isDriverContext ? 'bg-primary-600' : 'bg-amber-500'} text-white rounded-[2rem] shadow-2xl mb-8`}>
-                {isDriverContext ? <Truck size={40} /> : <ShieldCheck size={40} />}
+             <div className={`inline-block p-4 ${appContext === 'DRIVER' ? 'bg-primary-600' : 'bg-amber-500'} text-white rounded-[2rem] shadow-2xl mb-8`}>
+                {appContext === 'DRIVER' ? <Truck size={40} /> : <ShieldCheck size={40} />}
              </div>
-             <h1 className={`text-5xl font-black tracking-tighter ${isDriverContext ? 'text-slate-900' : 'text-white'}`}>
-               AURI<span className={isDriverContext ? 'text-primary-600' : 'text-amber-500'}>LOG</span>
+             <h1 className={`text-5xl font-black tracking-tighter ${appContext === 'DRIVER' ? 'text-slate-900' : 'text-white'}`}>
+               AURI<span className={appContext === 'DRIVER' ? 'text-primary-600' : 'text-amber-500'}>LOG</span>
              </h1>
              <p className="text-slate-500 font-bold uppercase tracking-widest text-[11px] mt-4">
-               {isDriverContext ? 'Portal do Motorista' : 'Painel de Gestão'}
+               {appContext === 'DRIVER' ? 'Portal do Motorista' : 'Painel de Gestão'}
              </p>
           </div>
-          <div className={`${isDriverContext ? 'bg-white' : 'bg-white/5 border border-white/10'} p-10 rounded-[3rem] shadow-2xl space-y-6`}>
+          <div className={`${appContext === 'DRIVER' ? 'bg-white' : 'bg-white/5 border border-white/10'} p-10 rounded-[3rem] shadow-2xl space-y-6`}>
             <div className="space-y-4">
-              <input type="email" placeholder="E-mail" className={`w-full p-6 rounded-3xl font-bold outline-none ${isDriverContext ? 'bg-slate-50 text-slate-900' : 'bg-white/5 text-white'}`} value={loginForm.email} onChange={e => setLoginForm({...loginForm, email: e.target.value})} />
-              <input type="password" placeholder="Senha" className={`w-full p-6 rounded-3xl font-bold outline-none ${isDriverContext ? 'bg-slate-50 text-slate-900' : 'bg-white/5 text-white'}`} value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} />
+              <input type="email" placeholder="E-mail" className={`w-full p-6 rounded-3xl font-bold outline-none ${appContext === 'DRIVER' ? 'bg-slate-50 text-slate-900' : 'bg-white/5 text-white'}`} value={loginForm.email} onChange={e => setLoginForm({...loginForm, email: e.target.value})} />
+              <input type="password" placeholder="Senha" className={`w-full p-6 rounded-3xl font-bold outline-none ${appContext === 'DRIVER' ? 'bg-slate-50 text-slate-900' : 'bg-white/5 text-white'}`} value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} />
             </div>
-            <button onClick={handleLogin} disabled={isLoggingIn} className={`w-full py-6 rounded-3xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all text-white ${isDriverContext ? 'bg-primary-600' : 'bg-amber-600'}`}>
+            <button onClick={handleLogin} disabled={isLoggingIn} className={`w-full py-6 rounded-3xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all text-white ${appContext === 'DRIVER' ? 'bg-primary-600' : 'bg-amber-600'}`}>
               {isLoggingIn ? <Loader2 className="animate-spin" /> : 'Entrar'}
             </button>
+            
+            <button onClick={() => {
+              const newMode = appContext === 'DRIVER' ? 'ADMIN' : 'DRIVER';
+              setAppContext(newMode);
+              localStorage.setItem('aurilog_app_mode', newMode);
+            }} className="w-full py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest">
+              Alternar para {appContext === 'DRIVER' ? 'Gestão' : 'Motorista'}
+            </button>
           </div>
+          
+          <button onClick={installApp} className="w-full flex items-center justify-center gap-2 py-4 text-primary-600 font-black text-[10px] uppercase tracking-widest bg-primary-50 rounded-2xl">
+            <Download size={14}/> Instalar Aplicativo
+          </button>
         </div>
       </div>
     );
@@ -323,6 +333,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-['Plus_Jakarta_Sans'] overflow-hidden">
+      {/* Menu Sidebar (Desktop e Mobile) */}
       <div className={`fixed md:relative inset-0 md:inset-auto z-40 bg-white md:bg-transparent ${isMenuOpen ? 'flex' : 'hidden'} md:flex md:w-80 md:flex-col md:border-r p-6 md:sticky md:top-0 md:h-screen transition-all shadow-sm`}>
         <div className="flex md:flex-col justify-between items-center md:items-start mb-10 w-full">
           <div>
@@ -344,15 +355,12 @@ const App: React.FC = () => {
         </div>
 
         <div className="mt-6 pt-6 border-t space-y-4">
+          <button onClick={installApp} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase text-primary-600 hover:bg-primary-50 transition-all">
+            <Download size={20} /> Instalar
+          </button>
           <button onClick={() => setShowNotifications(true)} className="w-full flex items-center justify-between gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase text-slate-500 hover:bg-slate-100 transition-all relative">
-            <div className="flex items-center gap-4">
-              <Bell size={20} /> Alertas
-            </div>
-            {allNotifications.length > 0 && (
-              <span className="w-5 h-5 bg-rose-500 text-white text-[9px] font-black rounded-full flex items-center justify-center animate-pulse">
-                {allNotifications.length}
-              </span>
-            )}
+            <div className="flex items-center gap-4"><Bell size={20} /> Alertas</div>
+            {allNotifications.length > 0 && <span className="w-5 h-5 bg-rose-500 text-white text-[9px] font-black rounded-full flex items-center justify-center animate-pulse">{allNotifications.length}</span>}
           </button>
           <button onClick={handleLogout} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase text-rose-500 hover:bg-rose-50 transition-all">
             <LogOut size={20} /> Sair
@@ -385,12 +393,9 @@ const App: React.FC = () => {
              try {
                const { error } = await supabase.from('jornada_logs').delete().eq('user_id', currentUser.id);
                if (error) throw error;
+               setJornadaLogs([]);
                await fetchData();
-             } catch (err: any) {
-               alert("Erro ao limpar histórico: " + err.message);
-             } finally {
-               setIsSaving(false);
-             }
+             } catch (err: any) { alert("Erro: " + err.message); } finally { setIsSaving(false); }
           }} addGlobalNotification={() => {}} isSaving={isSaving} />}
           {currentView === AppView.STATIONS && <StationLocator roadServices={roadServices} />}
         </div>
@@ -398,16 +403,14 @@ const App: React.FC = () => {
 
       {showNotifications && (
         <NotificationCenter notifications={allNotifications as any} onClose={() => setShowNotifications(false)} onAction={(cat) => { 
-          const viewMap: Record<string, AppView> = {
-            'TRIP': AppView.TRIPS,
-            'FINANCE': AppView.EXPENSES,
-            'MAINTENANCE': AppView.MAINTENANCE,
-            'JORNADA': AppView.JORNADA,
-            'GENERAL': AppView.DASHBOARD
-          };
+          const viewMap: Record<string, AppView> = { 'TRIP': AppView.TRIPS, 'FINANCE': AppView.EXPENSES, 'MAINTENANCE': AppView.MAINTENANCE, 'JORNADA': AppView.JORNADA, 'GENERAL': AppView.DASHBOARD };
           setCurrentView(viewMap[cat] || AppView.DASHBOARD); 
           setShowNotifications(false); 
-        }} onDismiss={handleDismissNotification} />
+        }} onDismiss={(id) => {
+          const next = [...dismissedIds, id];
+          setDismissedIds(next);
+          localStorage.setItem(`dismissed_notifs_${currentUser.email}`, JSON.stringify(next));
+        }} />
       )}
     </div>
   );
