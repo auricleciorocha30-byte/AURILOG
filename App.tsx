@@ -185,6 +185,13 @@ const App: React.FC = () => {
     localStorage.removeItem('aurilog_user');
   };
 
+  const handleDismissNotification = async (id: string) => {
+    // Para simplificar, "descartar" no driver significa que ele viu, mas a notificação vem do admin
+    // Como as notificações são compartilhadas, apenas removemos localmente se o usuário tiver permissão ou apenas marcamos como lida
+    // Por enquanto, vamos remover da lista local apenas para simular o descarte
+    setDbNotifications(prev => prev.filter(n => n.id !== id));
+  };
+
   if (!authRole) {
     const isAdmin = appContext === 'ADMIN';
     return (
@@ -232,6 +239,7 @@ const App: React.FC = () => {
 
   return (
     <div className="h-screen bg-slate-50 flex flex-col md:flex-row font-['Plus_Jakarta_Sans'] overflow-hidden">
+      {/* Sidebar Desktop */}
       <div className={`fixed md:relative inset-0 md:inset-auto z-[60] md:z-40 bg-white md:bg-transparent ${isMenuOpen ? 'flex' : 'hidden'} md:flex md:w-80 md:flex-col md:border-r p-6 md:sticky md:top-0 md:h-screen transition-all shadow-2xl md:shadow-none`}>
         <div className="flex md:flex-col justify-between items-center md:items-start mb-10 w-full safe-top">
           <div>
@@ -251,14 +259,27 @@ const App: React.FC = () => {
           <NavItem view={AppView.STATIONS} icon={MapPinned} label="Radar" />
         </div>
         <div className="mt-6 pt-6 border-t space-y-4 safe-bottom">
+          <button onClick={() => setShowNotifications(true)} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase text-slate-500 hover:bg-slate-100 transition-all relative">
+            <Bell size={20} /> Notificações
+            {dbNotifications.length > 0 && <span className="absolute top-4 left-10 w-2 h-2 bg-rose-500 rounded-full"></span>}
+          </button>
           <button onClick={handleLogout} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase text-rose-500 hover:bg-rose-50 transition-all"><LogOut size={20} /> Sair</button>
         </div>
       </div>
+
       <main className="flex-1 overflow-y-auto h-full relative">
+        {/* Header Mobile */}
         <div className="md:hidden bg-white/80 backdrop-blur-md px-6 py-4 flex justify-between items-center border-b sticky top-0 z-50 safe-top">
-          <h1 className="text-xl font-black text-primary-600 tracking-tighter">AURILOG</h1>
-          <button onClick={() => setIsMenuOpen(true)} className="p-3 bg-slate-50 rounded-xl text-slate-500 relative"><MoreHorizontal size={24}/></button>
+          <div className="flex items-center gap-3">
+             <button onClick={() => setIsMenuOpen(true)} className="p-3 bg-slate-50 rounded-xl text-slate-500"><MoreHorizontal size={24}/></button>
+             <h1 className="text-xl font-black text-primary-600 tracking-tighter">AURILOG</h1>
+          </div>
+          <button onClick={() => setShowNotifications(true)} className="p-3 bg-slate-50 rounded-xl text-slate-500 relative">
+            <Bell size={24}/>
+            {dbNotifications.length > 0 && <span className="absolute top-3 right-3 w-2 h-2 bg-rose-500 rounded-full border-2 border-white"></span>}
+          </button>
         </div>
+
         <div className="max-w-7xl mx-auto p-4 md:p-10 pb-32">
           {currentView === AppView.DASHBOARD && <Dashboard trips={trips} expenses={expenses} maintenance={maintenance} vehicles={vehicles} onSetView={setCurrentView} />}
           {currentView === AppView.TRIPS && <TripManager trips={trips} vehicles={vehicles} expenses={expenses} onAddTrip={(t) => handleAction('trips', t, 'insert')} onUpdateTrip={(id, t) => handleAction('trips', { ...t, id }, 'update')} onUpdateStatus={async (id, s, km) => { await handleAction('trips', { id, status: s }, 'update'); if (km && trips.find(x => x.id === id)?.vehicle_id) await handleAction('vehicles', { id: trips.find(x => x.id === id)!.vehicle_id, current_km: km }, 'update'); }} onDeleteTrip={(id) => handleAction('trips', { id }, 'delete')} isSaving={isSaving} isOnline={isOnline} />}
@@ -270,6 +291,26 @@ const App: React.FC = () => {
           {currentView === AppView.STATIONS && <StationLocator roadServices={roadServices} />}
         </div>
       </main>
+
+      {showNotifications && (
+        <NotificationCenter 
+          notifications={dbNotifications} 
+          onClose={() => setShowNotifications(false)} 
+          onAction={(category) => {
+            // Mapeia categoria da notificação para view do app
+            const viewMap: Record<string, AppView> = {
+              'JORNADA': AppView.JORNADA,
+              'MAINTENANCE': AppView.MAINTENANCE,
+              'FINANCE': AppView.EXPENSES,
+              'TRIP': AppView.TRIPS,
+              'GENERAL': AppView.DASHBOARD
+            };
+            if (viewMap[category]) setCurrentView(viewMap[category]);
+            setShowNotifications(false);
+          }} 
+          onDismiss={handleDismissNotification}
+        />
+      )}
     </div>
   );
 };
