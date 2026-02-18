@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { AppView, Trip, Expense, Vehicle, MaintenanceItem, JornadaLog, DbNotification, RoadService, CargoCategory, TripStatus } from './types';
 import { supabase } from './lib/supabase';
 import { offlineStorage } from './lib/offlineStorage';
@@ -87,6 +87,10 @@ const App: React.FC = () => {
   const [jornadaStartTime, setJornadaStartTime] = useState<number | null>(null);
   const [jornadaCurrentTime, setJornadaCurrentTime] = useState(0);
 
+  // Refs para controle do GPS
+  const lastLocationSent = useRef<number>(0);
+  const watchIdRef = useRef<number | null>(null);
+
   // Captura evento de instalação PWA
   useEffect(() => {
     const handler = (e: any) => {
@@ -106,64 +110,71 @@ const App: React.FC = () => {
     }
   };
 
-  // Rastreamento de Localização (Apenas para Motoristas)
+  // Rastreamento de Localização (Apenas para Motoristas) - LÓGICA REFORMULADA
   useEffect(() => {
+    // Limpa qualquer watcher anterior ao mudar status
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+
     // Só ativa se for Motorista, estiver logado e Online
     if (authRole === 'DRIVER' && currentUser && isOnline) {
       
-      const sendLocation = async (lat: number, lng: number) => {
+      if (!navigator.geolocation) {
+        console.warn("Navegador sem suporte a GPS");
+        setIsGpsActive(false);
+        return;
+      }
+
+      const sendLocationToSupabase = async (lat: number, lng: number) => {
+        const now = Date.now();
+        // Envia apenas se passou 30 segundos desde o último envio para não sobrecarregar
+        if (now - lastLocationSent.current < 30000) return;
+
         try {
-          // Usa UPSERT baseado no user_id (PK)
-          const { error } = await supabase.from('user_locations').upsert({
+          lastLocationSent.current = now;
+          await supabase.from('user_locations').upsert({
             user_id: currentUser.id,
             email: currentUser.email,
             latitude: lat,
             longitude: lng,
             updated_at: new Date().toISOString()
-          }, { onConflict: 'user_id' }); // Garante que atualiza se já existir
-
-          if (error) {
-             console.error("Erro GPS Supabase:", error);
-             // Não desativamos o GPS visualmente para não alarmar o motorista por erro de rede momentâneo
-          } else {
-             setIsGpsActive(true);
-          }
+          }, { onConflict: 'user_id' });
+          // Sucesso silencioso no envio
         } catch (err) {
-          console.error("Erro interno GPS:", err);
+          console.error("Erro envio GPS (silencioso):", err);
         }
       };
 
-      const updateLocation = () => {
-        if (!navigator.geolocation) {
-          console.warn("Navegador sem suporte a GPS");
+      // Usa watchPosition para rastreamento contínuo (mais confiável em movimento)
+      watchIdRef.current = navigator.geolocation.watchPosition(
+        (pos) => {
+          // Assim que recebermos uma coordenada válida, o GPS está "Ativo" visualmente
+          setIsGpsActive(true);
+          sendLocationToSupabase(pos.coords.latitude, pos.coords.longitude);
+        }, 
+        (error) => {
+          console.warn("Erro de permissão/sinal GPS:", error.message);
           setIsGpsActive(false);
-          return;
+        }, 
+        { 
+          enableHighAccuracy: true, 
+          timeout: 15000, 
+          maximumAge: 0 
         }
-
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            sendLocation(pos.coords.latitude, pos.coords.longitude);
-          }, 
-          (error) => {
-            console.warn("Erro de permissão/sinal GPS:", error.message);
-            // Se der erro de permissão ou timeout, marca como inativo
-            setIsGpsActive(false);
-          }, 
-          { 
-            enableHighAccuracy: true, 
-            timeout: 20000, 
-            maximumAge: 0 
-          }
-        );
-      };
-      
-      // Primeira chamada imediata
-      updateLocation();
-
-      // Intervalo de 30 segundos
-      const interval = setInterval(updateLocation, 30000); 
-      return () => clearInterval(interval);
+      );
+    } else {
+      setIsGpsActive(false);
     }
+
+    // Cleanup ao desmontar ou mudar dependências
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+    };
   }, [authRole, currentUser, isOnline]);
 
   useEffect(() => {
