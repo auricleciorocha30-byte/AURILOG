@@ -1,9 +1,9 @@
 
 {
-  "name": "AuriLog Logistics",
-  "short_name": "AuriLog",
+  "name": "AuriLog Motorista",
+  "short_name": "Motorista",
   "description": "Gestão inteligente de transporte de cargas e jornada para motoristas profissionais.",
-  "start_url": "/",
+  "start_url": "/?mode=driver",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#4f46e5",

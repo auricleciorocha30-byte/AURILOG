@@ -108,38 +108,60 @@ const App: React.FC = () => {
 
   // Rastreamento de Localização (Apenas para Motoristas)
   useEffect(() => {
+    // Só ativa se for Motorista, estiver logado e Online
     if (authRole === 'DRIVER' && currentUser && isOnline) {
+      
+      const sendLocation = async (lat: number, lng: number) => {
+        try {
+          // Usa UPSERT baseado no user_id (PK)
+          const { error } = await supabase.from('user_locations').upsert({
+            user_id: currentUser.id,
+            email: currentUser.email,
+            latitude: lat,
+            longitude: lng,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'user_id' }); // Garante que atualiza se já existir
+
+          if (error) {
+             console.error("Erro GPS Supabase:", error);
+             // Não desativamos o GPS visualmente para não alarmar o motorista por erro de rede momentâneo
+          } else {
+             setIsGpsActive(true);
+          }
+        } catch (err) {
+          console.error("Erro interno GPS:", err);
+        }
+      };
+
       const updateLocation = () => {
         if (!navigator.geolocation) {
+          console.warn("Navegador sem suporte a GPS");
           setIsGpsActive(false);
           return;
         }
 
         navigator.geolocation.getCurrentPosition(
-          async (pos) => {
-            setIsGpsActive(true);
-            try {
-              await supabase.from('user_locations').upsert({
-                user_id: currentUser.id,
-                email: currentUser.email,
-                latitude: pos.coords.latitude,
-                longitude: pos.coords.longitude,
-                updated_at: new Date().toISOString()
-              });
-            } catch (err) {
-              console.error("Erro ao enviar localização:", err);
-            }
+          (pos) => {
+            sendLocation(pos.coords.latitude, pos.coords.longitude);
           }, 
           (error) => {
-            console.warn("Erro de GPS:", error.message);
+            console.warn("Erro de permissão/sinal GPS:", error.message);
+            // Se der erro de permissão ou timeout, marca como inativo
             setIsGpsActive(false);
           }, 
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+          { 
+            enableHighAccuracy: true, 
+            timeout: 20000, 
+            maximumAge: 0 
+          }
         );
       };
       
-      const interval = setInterval(updateLocation, 30000); // Atualiza a cada 30 segundos para maior precisão no admin
+      // Primeira chamada imediata
       updateLocation();
+
+      // Intervalo de 30 segundos
+      const interval = setInterval(updateLocation, 30000); 
       return () => clearInterval(interval);
     }
   }, [authRole, currentUser, isOnline]);
@@ -419,6 +441,17 @@ const App: React.FC = () => {
                 {isLoggingIn ? <Loader2 className="animate-spin" /> : <>Entrar no Sistema <ChevronRight size={18} /></>}
               </button>
             </form>
+            
+            {/* Botão de Instalar App na Tela de Login */}
+            {installPrompt && !isAdmin && (
+               <button 
+                  type="button" 
+                  onClick={handleInstallClick} 
+                  className="w-full py-4 border-2 border-slate-200 text-slate-500 rounded-[2rem] font-black uppercase text-[10px] hover:border-primary-500 hover:text-primary-600 transition-all flex items-center justify-center gap-2"
+               >
+                  <Download size={16}/> Baixar App Motorista
+               </button>
+            )}
           </div>
         </div>
       </div>
