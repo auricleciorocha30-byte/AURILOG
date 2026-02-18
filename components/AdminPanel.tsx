@@ -85,15 +85,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
   const loadAllAdminData = async () => {
     setLoading(true);
     try {
-      const [tripsRes, expensesRes, vehiclesRes, maintenanceRes, driversRes, servicesRes, locRes, catRes] = await Promise.all([
+      // Carregamento resiliente: se categorias falhar, o resto carrega
+      const [tripsRes, expensesRes, vehiclesRes, maintenanceRes, driversRes, servicesRes, locRes] = await Promise.all([
         supabase.from('trips').select('*'),
         supabase.from('expenses').select('*'),
         supabase.from('vehicles').select('*'),
         supabase.from('maintenance').select('*'),
         supabase.from('drivers').select('*'),
         supabase.from('road_services').select('*'),
-        supabase.from('user_locations').select('*'),
-        supabase.from('cargo_categories').select('*').order('name', { ascending: true })
+        supabase.from('user_locations').select('*')
       ]);
 
       if (tripsRes.data) setAllTrips(tripsRes.data);
@@ -103,7 +103,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
       if (driversRes.data) setDrivers(driversRes.data);
       if (servicesRes.data) setRoadServices(servicesRes.data);
       if (locRes.data) setLocations(locRes.data);
-      if (catRes.data) setCategories(catRes.data);
+
+      // Tenta carregar categorias separadamente
+      const { data: catData } = await supabase.from('cargo_categories').select('*').order('name', { ascending: true });
+      if (catData) setCategories(catData);
+
     } catch (err) { 
       console.error("Erro ao carregar dados admin", err); 
     } finally { 
