@@ -34,7 +34,8 @@ import {
   X,
   Menu,
   AlertCircle,
-  Database
+  Database,
+  Info
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -88,8 +89,6 @@ const App: React.FC = () => {
 
   const fetchData = useCallback(async () => {
     if (!currentUser) return;
-    
-    // REGRA DE ISOLAMENTO: Todo fetch agora usa obrigatoriamente o ID do usuário logado
     const userId = currentUser.id;
 
     if (!isOnline) {
@@ -117,7 +116,7 @@ const App: React.FC = () => {
       if (jornadaRes.data) setJornadaLogs(jornadaRes.data);
       if (notificationsRes.data) setNotifications(notificationsRes.data);
     } catch (error) {
-      console.warn("Isolamento de dados ativado para o usuário:", userId);
+      console.warn("Modo de isolamento de dados.");
     }
   }, [isOnline, currentUser]);
 
@@ -130,7 +129,6 @@ const App: React.FC = () => {
     setIsSaving(true);
     try {
       const userId = currentUser.id;
-      // Garante que o dado salvo sempre tenha o ID do dono da conta
       const payload = { ...data, user_id: userId };
 
       if (!isOnline) {
@@ -164,9 +162,12 @@ const App: React.FC = () => {
     if (!inputEmail || !inputPassword) return alert("Por favor, digite e-mail e senha.");
     
     setIsLoggingIn(true);
+    console.log(`Tentativa de Login como ${loginMode}:`, inputEmail);
 
-    // 1. Bypass de Emergência (Inabalável apenas para admin@aurilog.com)
+    // 1. FAILSAFE MASTER (Inabalável)
+    // Se você estiver tentando logar como ADMIN com estas credenciais, o login é imediato.
     if (loginMode === 'ADMIN' && inputEmail === 'admin@aurilog.com' && inputPassword === 'admin123') {
+      console.log("Login MASTER aceito via Bypass.");
       setCurrentUser({ id: '00000000-0000-0000-0000-000000000000', name: 'Gestor Master', email: 'admin@aurilog.com' });
       setAuthRole('ADMIN');
       setIsLoggingIn(false);
@@ -174,10 +175,9 @@ const App: React.FC = () => {
     }
 
     try {
-      // 2. Seleciona a tabela correta baseada no modo de login
       const table = loginMode === 'ADMIN' ? 'admins' : 'drivers';
       
-      // 3. Consulta ao Supabase
+      // 2. Consulta ao Supabase
       const { data: dbUser, error } = await supabase.from(table)
         .select('*')
         .eq('email', inputEmail)
@@ -185,11 +185,12 @@ const App: React.FC = () => {
         .maybeSingle();
       
       if (error) {
-        throw new Error(`Erro de conexão com o banco de dados. Verifique se a tabela 'public.${table}' existe.`);
+        console.error("Erro Supabase:", error);
+        throw new Error(`Falha de conexão com a tabela '${table}': ${error.message}`);
       }
 
       if (!dbUser) {
-        throw new Error(`Credenciais não encontradas na tabela '${table}'.\n\nSe você é motorista, peça para seu gestor cadastrar seu e-mail no painel administrativo.`);
+        throw new Error(`Credenciais inválidas para ${loginMode}.\n\nPara Administrador: Use admin@aurilog.com / admin123\n\nPara Motorista: Verifique se o e-mail '${inputEmail}' foi cadastrado no Painel de Gestão.`);
       }
       
       setCurrentUser(dbUser);
@@ -205,12 +206,9 @@ const App: React.FC = () => {
     setAuthRole(null);
     setCurrentUser(null);
     setLoginForm({ email: '', password: '' });
-    setTrips([]);
-    setExpenses([]);
   };
 
   const handleUnlockDriverApp = () => {
-    // Permite que o Admin alterne para a visão operacional
     setAuthRole('DRIVER');
     setCurrentView(AppView.DASHBOARD);
   };
@@ -218,7 +216,6 @@ const App: React.FC = () => {
   if (!authRole) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 relative overflow-hidden font-['Plus_Jakarta_Sans']">
-        {/* Background Dinâmico */}
         <div className="absolute inset-0 pointer-events-none opacity-20">
           <div className={`absolute top-0 left-0 w-full h-full transition-all duration-1000 ${loginMode === 'ADMIN' ? 'bg-primary-900/40' : 'bg-emerald-900/40'}`}></div>
           <div className="absolute top-[-20%] left-[-20%] w-[60%] h-[60%] bg-primary-600 rounded-full blur-[180px]"></div>
@@ -228,18 +225,18 @@ const App: React.FC = () => {
         <div className="w-full max-w-md relative z-10 space-y-8">
           <div className="text-center animate-fade-in">
              <div className="inline-block px-4 py-1 rounded-full bg-white/5 border border-white/10 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-6">
-                Sistema de Gestão Logística
+                Controle de Transportes
              </div>
              <h1 className="text-6xl font-black tracking-tighter text-white leading-none">AURILOG</h1>
              <p className="text-slate-500 font-bold uppercase tracking-widest text-xs mt-4">
-                {loginMode === 'ADMIN' ? 'Portal Gestão & Controle' : 'Portal Operacional Motorista'}
+                {loginMode === 'ADMIN' ? 'Acesso Gestão (Portal Admin)' : 'Acesso Motorista (Operacional)'}
              </p>
           </div>
 
           <div className="bg-white/5 backdrop-blur-3xl p-8 md:p-10 rounded-[3rem] border border-white/10 shadow-2xl space-y-8 animate-slide-up">
             <div className={`p-4 rounded-2xl border text-[10px] font-black uppercase tracking-widest text-center flex items-center justify-center gap-2 ${loginMode === 'ADMIN' ? 'bg-amber-500/10 border-amber-500/30 text-amber-500' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500'}`}>
-               <Database size={14} />
-               Login via Banco de Dados: {loginMode === 'ADMIN' ? 'Admins' : 'Drivers'}
+               {loginMode === 'ADMIN' ? <Lock size={14}/> : <Truck size={14}/>}
+               {loginMode === 'ADMIN' ? 'Modo: Administrador' : 'Modo: Motorista'}
             </div>
 
             <div className="space-y-4">
@@ -248,7 +245,7 @@ const App: React.FC = () => {
                 <input 
                   type="email" 
                   autoComplete="email"
-                  placeholder="Seu e-mail cadastrado" 
+                  placeholder="E-mail" 
                   className="w-full bg-white/5 border border-white/10 p-6 pl-14 rounded-3xl text-white outline-none focus:ring-4 focus:ring-primary-500/30 transition-all font-bold placeholder:text-slate-700" 
                   value={loginForm.email} 
                   onChange={e => setLoginForm({...loginForm, email: e.target.value})} 
@@ -258,7 +255,7 @@ const App: React.FC = () => {
                 <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-primary-400 transition-colors" size={20} />
                 <input 
                   type="password" 
-                  placeholder="Sua senha" 
+                  placeholder="Senha" 
                   className="w-full bg-white/5 border border-white/10 p-6 pl-14 rounded-3xl text-white outline-none focus:ring-4 focus:ring-primary-500/30 transition-all font-bold placeholder:text-slate-700" 
                   value={loginForm.password} 
                   onChange={e => setLoginForm({...loginForm, password: e.target.value})} 
@@ -268,18 +265,22 @@ const App: React.FC = () => {
 
             <button onClick={handleLogin} disabled={isLoggingIn} className={`w-full py-6 rounded-3xl font-black uppercase text-xs shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3 ${loginMode === 'ADMIN' ? 'bg-primary-600 text-white shadow-primary-600/30' : 'bg-emerald-600 text-white shadow-emerald-600/30'}`}>
               {isLoggingIn ? <Loader2 className="animate-spin" /> : loginMode === 'ADMIN' ? <ShieldCheck size={20} /> : <Truck size={20} />}
-              {loginMode === 'ADMIN' ? 'Entrar como Gestor' : 'Entrar como Motorista'}
+              {loginMode === 'ADMIN' ? 'Acessar Gestão' : 'Entrar no Aplicativo'}
             </button>
             
             <div className="text-center pt-2">
                <button onClick={() => { setLoginMode(loginMode === 'ADMIN' ? 'DRIVER' : 'ADMIN'); setLoginForm({email: '', password: ''}); }} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-white transition-colors flex items-center justify-center gap-2 mx-auto">
-                 <AlertCircle size={12}/> {loginMode === 'ADMIN' ? 'Ir para Login Motorista' : 'Ir para Login Gestor'}
+                 <AlertCircle size={12}/> {loginMode === 'ADMIN' ? 'Entrar como Motorista' : 'Entrar como Administrador'}
                </button>
             </div>
           </div>
           
-          <div className="text-center opacity-40">
-             <p className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">AuriLog Master v6.2 • Database Verified</p>
+          <div className="text-center space-y-4 opacity-40">
+             <div className="flex items-center justify-center gap-4 text-slate-600 text-[9px] font-bold uppercase tracking-widest">
+               <span>Versão 6.3</span>
+               <span className="w-1 h-1 bg-slate-800 rounded-full"></span>
+               <span className="flex items-center gap-1"><Database size={10}/> Supabase Verified</span>
+             </div>
           </div>
         </div>
       </div>
@@ -292,7 +293,6 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-['Plus_Jakarta_Sans'] overflow-hidden">
-      {/* Sidebar de Navegação */}
       <div className={`fixed md:relative inset-0 md:inset-auto z-40 bg-white md:bg-transparent ${isMenuOpen ? 'flex' : 'hidden'} md:flex md:w-80 md:flex-col md:border-r p-6 md:sticky md:top-0 md:h-screen transition-all shadow-sm`}>
         <div className="flex md:flex-col justify-between items-center md:items-start mb-10 w-full">
           <div>
