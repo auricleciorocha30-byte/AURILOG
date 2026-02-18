@@ -33,7 +33,8 @@ import {
   Unlock,
   X,
   Menu,
-  AlertCircle
+  AlertCircle,
+  Database
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -87,6 +88,8 @@ const App: React.FC = () => {
 
   const fetchData = useCallback(async () => {
     if (!currentUser) return;
+    
+    // REGRA DE ISOLAMENTO: Todo fetch agora usa obrigatoriamente o ID do usuário logado
     const userId = currentUser.id;
 
     if (!isOnline) {
@@ -114,7 +117,7 @@ const App: React.FC = () => {
       if (jornadaRes.data) setJornadaLogs(jornadaRes.data);
       if (notificationsRes.data) setNotifications(notificationsRes.data);
     } catch (error) {
-      console.warn("Isolamento de dados ativo.");
+      console.warn("Isolamento de dados ativado para o usuário:", userId);
     }
   }, [isOnline, currentUser]);
 
@@ -127,6 +130,7 @@ const App: React.FC = () => {
     setIsSaving(true);
     try {
       const userId = currentUser.id;
+      // Garante que o dado salvo sempre tenha o ID do dono da conta
       const payload = { ...data, user_id: userId };
 
       if (!isOnline) {
@@ -160,12 +164,9 @@ const App: React.FC = () => {
     if (!inputEmail || !inputPassword) return alert("Por favor, digite e-mail e senha.");
     
     setIsLoggingIn(true);
-    console.log("Iniciando tentativa de login...");
 
-    // 1. BYPASS DE EMERGÊNCIA (Inabalável)
-    // Se você digitar as credenciais master, entra direto mesmo sem internet ou banco
+    // 1. Bypass de Emergência (Inabalável apenas para admin@aurilog.com)
     if (loginMode === 'ADMIN' && inputEmail === 'admin@aurilog.com' && inputPassword === 'admin123') {
-      console.log("Login master realizado via Bypass.");
       setCurrentUser({ id: '00000000-0000-0000-0000-000000000000', name: 'Gestor Master', email: 'admin@aurilog.com' });
       setAuthRole('ADMIN');
       setIsLoggingIn(false);
@@ -173,9 +174,10 @@ const App: React.FC = () => {
     }
 
     try {
+      // 2. Seleciona a tabela correta baseada no modo de login
       const table = loginMode === 'ADMIN' ? 'admins' : 'drivers';
       
-      // 2. Busca no Supabase (Tabela public.admins or public.drivers)
+      // 3. Consulta ao Supabase
       const { data: dbUser, error } = await supabase.from(table)
         .select('*')
         .eq('email', inputEmail)
@@ -183,12 +185,11 @@ const App: React.FC = () => {
         .maybeSingle();
       
       if (error) {
-        console.error("Erro Supabase:", error);
-        throw new Error(`Falha de conexão: ${error.message}. Verifique se as tabelas existem no seu projeto.`);
+        throw new Error(`Erro de conexão com o banco de dados. Verifique se a tabela 'public.${table}' existe.`);
       }
 
       if (!dbUser) {
-        throw new Error(`Credenciais Inválidas para o modo ${loginMode === 'ADMIN' ? 'Administrador' : 'Motorista'}.\n\nSe você criou o usuário no Supabase:\n1. Certifique-se de que inseriu na aba 'Table Editor' (public.${table}) e NÃO na aba 'Authentication'.\n2. Verifique se executou o script SQL para desativar o RLS.`);
+        throw new Error(`Credenciais não encontradas na tabela '${table}'.\n\nSe você é motorista, peça para seu gestor cadastrar seu e-mail no painel administrativo.`);
       }
       
       setCurrentUser(dbUser);
@@ -204,19 +205,20 @@ const App: React.FC = () => {
     setAuthRole(null);
     setCurrentUser(null);
     setLoginForm({ email: '', password: '' });
+    setTrips([]);
+    setExpenses([]);
   };
 
-  /**
-   * Fix: Defined handleUnlockDriverApp to resolve the 'Cannot find name' error.
-   * Allows the admin to switch to the driver's operational view.
-   */
   const handleUnlockDriverApp = () => {
+    // Permite que o Admin alterne para a visão operacional
     setAuthRole('DRIVER');
+    setCurrentView(AppView.DASHBOARD);
   };
 
   if (!authRole) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 relative overflow-hidden font-['Plus_Jakarta_Sans']">
+        {/* Background Dinâmico */}
         <div className="absolute inset-0 pointer-events-none opacity-20">
           <div className={`absolute top-0 left-0 w-full h-full transition-all duration-1000 ${loginMode === 'ADMIN' ? 'bg-primary-900/40' : 'bg-emerald-900/40'}`}></div>
           <div className="absolute top-[-20%] left-[-20%] w-[60%] h-[60%] bg-primary-600 rounded-full blur-[180px]"></div>
@@ -226,18 +228,18 @@ const App: React.FC = () => {
         <div className="w-full max-w-md relative z-10 space-y-8">
           <div className="text-center animate-fade-in">
              <div className="inline-block px-4 py-1 rounded-full bg-white/5 border border-white/10 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-6">
-                Sistema Logístico Master
+                Sistema de Gestão Logística
              </div>
              <h1 className="text-6xl font-black tracking-tighter text-white leading-none">AURILOG</h1>
              <p className="text-slate-500 font-bold uppercase tracking-widest text-xs mt-4">
-                {loginMode === 'ADMIN' ? 'Portal Gestão & Controle' : 'Acesso Operacional Driver'}
+                {loginMode === 'ADMIN' ? 'Portal Gestão & Controle' : 'Portal Operacional Motorista'}
              </p>
           </div>
 
-          <div className="bg-white/5 backdrop-blur-3xl p-8 md:p-10 rounded-[4rem] border border-white/10 shadow-2xl space-y-8 animate-slide-up">
+          <div className="bg-white/5 backdrop-blur-3xl p-8 md:p-10 rounded-[3rem] border border-white/10 shadow-2xl space-y-8 animate-slide-up">
             <div className={`p-4 rounded-2xl border text-[10px] font-black uppercase tracking-widest text-center flex items-center justify-center gap-2 ${loginMode === 'ADMIN' ? 'bg-amber-500/10 border-amber-500/30 text-amber-500' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500'}`}>
-               {loginMode === 'ADMIN' ? <Lock size={14}/> : <Truck size={14}/>}
-               {loginMode === 'ADMIN' ? 'Modo: Administrador (Mestre)' : 'Modo: Motorista (Operacional)'}
+               <Database size={14} />
+               Login via Banco de Dados: {loginMode === 'ADMIN' ? 'Admins' : 'Drivers'}
             </div>
 
             <div className="space-y-4">
@@ -246,7 +248,7 @@ const App: React.FC = () => {
                 <input 
                   type="email" 
                   autoComplete="email"
-                  placeholder={loginMode === 'ADMIN' ? "admin@aurilog.com" : "Seu E-mail Motorista"} 
+                  placeholder="Seu e-mail cadastrado" 
                   className="w-full bg-white/5 border border-white/10 p-6 pl-14 rounded-3xl text-white outline-none focus:ring-4 focus:ring-primary-500/30 transition-all font-bold placeholder:text-slate-700" 
                   value={loginForm.email} 
                   onChange={e => setLoginForm({...loginForm, email: e.target.value})} 
@@ -256,7 +258,7 @@ const App: React.FC = () => {
                 <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-primary-400 transition-colors" size={20} />
                 <input 
                   type="password" 
-                  placeholder="Sua Senha" 
+                  placeholder="Sua senha" 
                   className="w-full bg-white/5 border border-white/10 p-6 pl-14 rounded-3xl text-white outline-none focus:ring-4 focus:ring-primary-500/30 transition-all font-bold placeholder:text-slate-700" 
                   value={loginForm.password} 
                   onChange={e => setLoginForm({...loginForm, password: e.target.value})} 
@@ -266,18 +268,18 @@ const App: React.FC = () => {
 
             <button onClick={handleLogin} disabled={isLoggingIn} className={`w-full py-6 rounded-3xl font-black uppercase text-xs shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3 ${loginMode === 'ADMIN' ? 'bg-primary-600 text-white shadow-primary-600/30' : 'bg-emerald-600 text-white shadow-emerald-600/30'}`}>
               {isLoggingIn ? <Loader2 className="animate-spin" /> : loginMode === 'ADMIN' ? <ShieldCheck size={20} /> : <Truck size={20} />}
-              {loginMode === 'ADMIN' ? 'Autenticar Gestor' : 'Entrar no App'}
+              {loginMode === 'ADMIN' ? 'Entrar como Gestor' : 'Entrar como Motorista'}
             </button>
             
             <div className="text-center pt-2">
                <button onClick={() => { setLoginMode(loginMode === 'ADMIN' ? 'DRIVER' : 'ADMIN'); setLoginForm({email: '', password: ''}); }} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-white transition-colors flex items-center justify-center gap-2 mx-auto">
-                 <AlertCircle size={12}/> {loginMode === 'ADMIN' ? 'Sou Motorista (Clique aqui)' : 'Sou Administrador (Clique aqui)'}
+                 <AlertCircle size={12}/> {loginMode === 'ADMIN' ? 'Ir para Login Motorista' : 'Ir para Login Gestor'}
                </button>
             </div>
           </div>
           
-          <div className="text-center space-y-4 animate-fade-in opacity-50">
-             <p className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">AuriLog Master v6.1 - Database Connected</p>
+          <div className="text-center opacity-40">
+             <p className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">AuriLog Master v6.2 • Database Verified</p>
           </div>
         </div>
       </div>
@@ -290,6 +292,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-['Plus_Jakarta_Sans'] overflow-hidden">
+      {/* Sidebar de Navegação */}
       <div className={`fixed md:relative inset-0 md:inset-auto z-40 bg-white md:bg-transparent ${isMenuOpen ? 'flex' : 'hidden'} md:flex md:w-80 md:flex-col md:border-r p-6 md:sticky md:top-0 md:h-screen transition-all shadow-sm`}>
         <div className="flex md:flex-col justify-between items-center md:items-start mb-10 w-full">
           <div>
@@ -334,7 +337,7 @@ const App: React.FC = () => {
           {currentView === AppView.VEHICLES && <VehicleManager vehicles={vehicles} onAddVehicle={(v) => handleAction('vehicles', v, 'insert')} onUpdateVehicle={(id, v) => handleAction('vehicles', { ...v, id }, 'update')} onDeleteVehicle={(id) => handleAction('vehicles', { id }, 'delete')} isSaving={isSaving} />}
           {currentView === AppView.MAINTENANCE && <MaintenanceManager maintenance={maintenance} vehicles={vehicles} onAddMaintenance={(m) => handleAction('maintenance', m, 'insert')} onDeleteMaintenance={(id) => handleAction('maintenance', { id }, 'delete')} isSaving={isSaving} />}
           {currentView === AppView.CALCULATOR && <FreightCalculator />}
-          {currentView === AppView.JORNADA && <JornadaManager mode={jornadaMode} startTime={jornadaStartTime} currentTime={jornadaCurrentTime} logs={jornadaLogs} setMode={setJornadaMode} setStartTime={setJornadaStartTime} onSaveLog={(l) => handleAction('jornada_logs', l, 'insert')} onDeleteLog={(id) => handleAction('jornada_logs', { id }, 'delete')} onClearHistory={async () => {}} addGlobalNotification={() => {}} isSaving={isSaving} />}
+          {currentView === AppView.JORNADA && <JornadaManager mode={jornadaMode} startTime={jornadaStartTime} currentTime={jornadaCurrentTime} logs={jornadaLogs} setMode={setJornadaMode} setStartTime={setStartTime => setJornadaStartTime(setStartTime)} onSaveLog={(l) => handleAction('jornada_logs', l, 'insert')} onDeleteLog={(id) => handleAction('jornada_logs', { id }, 'delete')} onClearHistory={async () => {}} addGlobalNotification={() => {}} isSaving={isSaving} />}
           {currentView === AppView.STATIONS && <StationLocator />}
         </div>
       </main>
