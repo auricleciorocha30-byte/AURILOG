@@ -30,7 +30,8 @@ import {
   MoreHorizontal,
   ChevronRight,
   Wifi,
-  WifiOff
+  WifiOff,
+  Navigation
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -65,6 +66,7 @@ const App: React.FC = () => {
   
   const [isSaving, setIsSaving] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isGpsActive, setIsGpsActive] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -76,18 +78,35 @@ const App: React.FC = () => {
   useEffect(() => {
     if (authRole === 'DRIVER' && currentUser && isOnline) {
       const updateLocation = () => {
-        navigator.geolocation.getCurrentPosition(async (pos) => {
-          await supabase.from('user_locations').upsert({
-            user_id: currentUser.id,
-            email: currentUser.email,
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude,
-            updated_at: new Date().toISOString()
-          });
-        }, null, { enableHighAccuracy: true });
+        if (!navigator.geolocation) {
+          setIsGpsActive(false);
+          return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+          async (pos) => {
+            setIsGpsActive(true);
+            try {
+              await supabase.from('user_locations').upsert({
+                user_id: currentUser.id,
+                email: currentUser.email,
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude,
+                updated_at: new Date().toISOString()
+              });
+            } catch (err) {
+              console.error("Erro ao enviar localização:", err);
+            }
+          }, 
+          (error) => {
+            console.warn("Erro de GPS:", error.message);
+            setIsGpsActive(false);
+          }, 
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
       };
       
-      const interval = setInterval(updateLocation, 60000); // A cada 1 minuto
+      const interval = setInterval(updateLocation, 30000); // Atualiza a cada 30 segundos para maior precisão no admin
       updateLocation();
       return () => clearInterval(interval);
     }
@@ -186,9 +205,6 @@ const App: React.FC = () => {
   };
 
   const handleDismissNotification = async (id: string) => {
-    // Para simplificar, "descartar" no driver significa que ele viu, mas a notificação vem do admin
-    // Como as notificações são compartilhadas, apenas removemos localmente se o usuário tiver permissão ou apenas marcamos como lida
-    // Por enquanto, vamos remover da lista local apenas para simular o descarte
     setDbNotifications(prev => prev.filter(n => n.id !== id));
   };
 
@@ -259,6 +275,13 @@ const App: React.FC = () => {
           <NavItem view={AppView.STATIONS} icon={MapPinned} label="Radar" />
         </div>
         <div className="mt-6 pt-6 border-t space-y-4 safe-bottom">
+          <div className="px-6 py-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between">
+             <div className="flex items-center gap-2">
+                <Navigation size={14} className={isGpsActive ? 'text-emerald-500' : 'text-slate-300'} />
+                <span className="text-[9px] font-black uppercase text-slate-500 tracking-widest">GPS Status</span>
+             </div>
+             <div className={`w-2 h-2 rounded-full ${isGpsActive ? 'bg-emerald-500 shadow-[0_0_8px_#10b981] animate-pulse' : 'bg-slate-300'}`}></div>
+          </div>
           <button onClick={() => setShowNotifications(true)} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase text-slate-500 hover:bg-slate-100 transition-all relative">
             <Bell size={20} /> Notificações
             {dbNotifications.length > 0 && <span className="absolute top-4 left-10 w-2 h-2 bg-rose-500 rounded-full"></span>}
@@ -274,10 +297,16 @@ const App: React.FC = () => {
              <button onClick={() => setIsMenuOpen(true)} className="p-3 bg-slate-50 rounded-xl text-slate-500"><MoreHorizontal size={24}/></button>
              <h1 className="text-xl font-black text-primary-600 tracking-tighter">AURILOG</h1>
           </div>
-          <button onClick={() => setShowNotifications(true)} className="p-3 bg-slate-50 rounded-xl text-slate-500 relative">
-            <Bell size={24}/>
-            {dbNotifications.length > 0 && <span className="absolute top-3 right-3 w-2 h-2 bg-rose-500 rounded-full border-2 border-white"></span>}
-          </button>
+          <div className="flex items-center gap-2">
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border ${isGpsActive ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
+               <Navigation size={12} className={isGpsActive ? 'animate-pulse' : ''} />
+               <span className="text-[9px] font-black uppercase tracking-widest">{isGpsActive ? 'GPS ON' : 'GPS OFF'}</span>
+            </div>
+            <button onClick={() => setShowNotifications(true)} className="p-3 bg-slate-50 rounded-xl text-slate-500 relative">
+              <Bell size={24}/>
+              {dbNotifications.length > 0 && <span className="absolute top-3 right-3 w-2 h-2 bg-rose-500 rounded-full border-2 border-white"></span>}
+            </button>
+          </div>
         </div>
 
         <div className="max-w-7xl mx-auto p-4 md:p-10 pb-32">
@@ -297,7 +326,6 @@ const App: React.FC = () => {
           notifications={dbNotifications} 
           onClose={() => setShowNotifications(false)} 
           onAction={(category) => {
-            // Mapeia categoria da notificação para view do app
             const viewMap: Record<string, AppView> = {
               'JORNADA': AppView.JORNADA,
               'MAINTENANCE': AppView.MAINTENANCE,
