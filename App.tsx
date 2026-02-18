@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { AppView, Trip, Expense, Vehicle, MaintenanceItem, JornadaLog, DbNotification, TripStatus, Driver } from './types';
 import { supabase } from './lib/supabase';
@@ -154,7 +155,8 @@ const App: React.FC = () => {
       if (response?.error) throw response.error;
       await fetchData();
     } catch (error: any) {
-      alert(`Erro no Banco: ${error.message}`);
+      console.error(error);
+      alert(`Erro no Banco: ${error.message || 'Erro desconhecido'}`);
     } finally {
       setIsSaving(false);
     }
@@ -168,17 +170,11 @@ const App: React.FC = () => {
     
     setIsLoggingIn(true);
 
-    // 1. FAILSAFE MASTER (Somente se NÃO for contexto de motorista)
-    if (!isDriverContext && inputEmail === 'admin@aurilog.com' && inputPassword === 'admin123') {
-      setCurrentUser({ id: '00000000-0000-0000-0000-000000000000', name: 'Gestor Master', email: 'admin@aurilog.com' });
-      setAuthRole('ADMIN');
-      setIsLoggingIn(false);
-      return;
-    }
-
     try {
       // Tabela baseada no contexto da URL
       const table = isDriverContext ? 'drivers' : 'admins';
+      
+      // Tenta buscar o usuário no banco para obter o ID real
       const { data: dbUser, error } = await supabase.from(table)
         .select('*')
         .eq('email', inputEmail)
@@ -186,6 +182,13 @@ const App: React.FC = () => {
         .maybeSingle();
       
       if (error) throw new Error(`Conexão com banco falhou: ${error.message}`);
+
+      // FALLBACK PARA MASTER (Apenas se o banco falhar ou não encontrar o admin padrão)
+      if (!dbUser && !isDriverContext && inputEmail === 'admin@aurilog.com' && inputPassword === 'admin123') {
+        setCurrentUser({ id: '00000000-0000-0000-0000-000000000000', name: 'Gestor Master', email: 'admin@aurilog.com' });
+        setAuthRole('ADMIN');
+        return;
+      }
 
       if (!dbUser) {
         throw new Error(`Credenciais inválidas no Portal ${isDriverContext ? 'do Motorista' : 'Administrativo'}.`);
@@ -353,7 +356,6 @@ const App: React.FC = () => {
             {isOnline ? <Wifi size={16} /> : <WifiOff size={16} />}
             {isOnline ? 'Conectado' : 'Offline'}
           </div>
-          {/* Fix: Added missing onClick attribute for the logout button */}
           <button onClick={handleLogout} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase text-rose-500 hover:bg-rose-50 transition-all">
             <LogOut size={20} /> Sair
           </button>
