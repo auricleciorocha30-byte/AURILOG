@@ -27,31 +27,21 @@ import {
   ShieldCheck,
   Loader2,
   X,
-  Menu,
-  Download,
   MoreHorizontal,
   ChevronRight,
-  User,
-  ArrowLeft,
-  Calendar
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 
 const App: React.FC = () => {
-  // O estado inicial prioriza o ADMIN a menos que o parâmetro 'mode=driver' esteja na URL
-  const [appContext, setAppContext] = useState<'DRIVER' | 'ADMIN'>(() => {
+  const [appContext] = useState<'DRIVER' | 'ADMIN'>(() => {
     const queryParams = new URLSearchParams(window.location.search);
-    const modeParam = queryParams.get('mode');
-    
-    // Se explicitamente for driver na URL, entra como driver
-    if (modeParam === 'driver') return 'DRIVER';
-    // Em qualquer outro caso, o padrão é sempre ADMIN
-    return 'ADMIN';
+    return queryParams.get('mode') === 'driver' ? 'DRIVER' : 'ADMIN';
   });
 
   const [authRole, setAuthRole] = useState<'DRIVER' | 'ADMIN' | null>(() => {
     const savedRole = localStorage.getItem('aurilog_role') as 'DRIVER' | 'ADMIN' | null;
     const savedUser = localStorage.getItem('aurilog_user');
-    // Só mantém logado se o contexto atual coincidir com o salvo
     if (savedRole === appContext && savedUser) return savedRole;
     return null;
   });
@@ -137,7 +127,7 @@ const App: React.FC = () => {
         await offlineStorage.save(table, { ...data, user_id: currentUser.id }, action);
       }
       await fetchData();
-    } catch (err: any) { alert("Erro ao processar ação: " + err.message); } finally { setIsSaving(false); }
+    } catch (err: any) { alert("Erro: " + err.message); } finally { setIsSaving(false); }
   }, [currentUser, isOnline, fetchData]);
 
   useEffect(() => { if (currentUser) fetchData(); }, [fetchData, currentUser]);
@@ -157,11 +147,9 @@ const App: React.FC = () => {
         localStorage.setItem('aurilog_user', JSON.stringify(masterUser));
         return;
       }
-
       const table = appContext === 'DRIVER' ? 'drivers' : 'admins';
       const { data: dbUser, error } = await supabase.from(table).select('*').eq('email', inputEmail).eq('password', inputPassword).maybeSingle();
-      if (error || !dbUser) throw new Error("Credenciais inválidas para este portal.");
-
+      if (error || !dbUser) throw new Error("Credenciais inválidas para este acesso.");
       setCurrentUser(dbUser);
       setAuthRole(appContext);
       localStorage.setItem('aurilog_role', appContext);
@@ -176,97 +164,49 @@ const App: React.FC = () => {
     localStorage.removeItem('aurilog_user');
   };
 
-  // TELA DE LOGIN - SEM LIGAÇÃO ENTRE ELAS
   if (!authRole) {
-    if (appContext === 'ADMIN') {
-      return (
-        <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 relative overflow-hidden font-['Plus_Jakarta_Sans']">
-          <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-amber-500/10 blur-[120px] rounded-full -translate-y-1/2 translate-x-1/2"></div>
-          
-          <div className="w-full max-w-md space-y-10 animate-fade-in z-10">
-            <div className="text-center">
-               <div className="inline-block p-6 bg-amber-500 text-slate-950 rounded-[2.5rem] shadow-2xl shadow-amber-500/20 mb-8">
-                  <ShieldCheck size={48} />
-               </div>
-               <h1 className="text-5xl font-black tracking-tighter text-white">
-                 AURI<span className="text-amber-500">LOG</span> <span className="text-xs bg-white/10 px-3 py-1 rounded-full align-middle ml-2 font-bold tracking-widest text-slate-400">GESTOR</span>
-               </h1>
-               <p className="font-bold uppercase tracking-[0.3em] text-[10px] mt-4 text-slate-500">Command Center Administrativo</p>
-            </div>
-
-            <div className="bg-white/5 border border-white/10 backdrop-blur-2xl p-10 rounded-[4rem] shadow-2xl space-y-8">
-              <form onSubmit={handleLogin} className="space-y-6">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase ml-1 tracking-widest text-slate-500">Acesso Administrativo</label>
-                  <input required type="email" placeholder="E-mail Gestor" className="w-full p-6 rounded-3xl font-bold outline-none border-2 border-transparent focus:border-amber-500 bg-white/5 text-white transition-all" value={loginForm.email} onChange={e => setLoginForm({...loginForm, email: e.target.value})} />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase ml-1 tracking-widest text-slate-500">Chave de Segurança</label>
-                  <input required type="password" placeholder="Senha" className="w-full p-6 rounded-3xl font-bold outline-none border-2 border-transparent focus:border-amber-500 bg-white/5 text-white transition-all" value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} />
-                </div>
-                <button type="submit" disabled={isLoggingIn} className="w-full py-6 bg-amber-500 text-slate-950 rounded-[2rem] font-black uppercase text-xs shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3">
-                  {isLoggingIn ? <Loader2 className="animate-spin" /> : <>Entrar no Painel <ChevronRight size={18} /></>}
-                </button>
-              </form>
-            </div>
-            <p className="text-center text-[9px] font-bold text-slate-700 uppercase tracking-widest">Acesso restrito a administradores do sistema</p>
-          </div>
-        </div>
-      );
-    }
-
-    // Portal do Motorista - Tela Separada
+    const isAdmin = appContext === 'ADMIN';
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 relative overflow-hidden font-['Plus_Jakarta_Sans']">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-primary-600/5 blur-[100px] rounded-full -translate-y-1/2 translate-x-1/2"></div>
-        
+      <div className={`min-h-screen ${isAdmin ? 'bg-slate-950' : 'bg-slate-50'} flex flex-col items-center justify-center p-6 relative overflow-hidden font-['Plus_Jakarta_Sans']`}>
+        <div className={`absolute top-0 right-0 w-[500px] h-[500px] ${isAdmin ? 'bg-amber-500/10' : 'bg-primary-600/5'} blur-[120px] rounded-full -translate-y-1/2 translate-x-1/2`}></div>
         <div className="w-full max-w-md space-y-10 animate-fade-in z-10">
           <div className="text-center">
-             <div className="inline-block p-6 bg-primary-600 text-white rounded-[2.5rem] shadow-2xl shadow-primary-600/20 mb-8">
-                <Truck size={48} />
+             <div className={`inline-block p-6 ${isAdmin ? 'bg-amber-500 text-slate-950 shadow-amber-500/20' : 'bg-primary-600 text-white shadow-primary-600/20'} rounded-[2.5rem] shadow-2xl mb-8`}>
+                {isAdmin ? <ShieldCheck size={48} /> : <Truck size={48} />}
              </div>
-             <h1 className="text-5xl font-black tracking-tighter text-slate-900">
-               AURI<span className="text-primary-600">LOG</span>
+             <h1 className={`text-5xl font-black tracking-tighter ${isAdmin ? 'text-white' : 'text-slate-900'}`}>
+               AURI<span className={isAdmin ? 'text-amber-500' : 'text-primary-600'}>LOG</span>
+               <span className={`text-[10px] ml-2 px-3 py-1 rounded-full uppercase tracking-widest ${isAdmin ? 'bg-white/10 text-slate-400' : 'bg-primary-100 text-primary-600'}`}>
+                 {isAdmin ? 'GESTOR' : 'OPERACIONAL'}
+               </span>
              </h1>
-             <p className="font-bold uppercase tracking-[0.3em] text-[10px] mt-4 text-slate-400">Portal do Condutor Profissional</p>
+             <p className={`font-bold uppercase tracking-[0.3em] text-[10px] mt-4 ${isAdmin ? 'text-slate-500' : 'text-slate-400'}`}>
+               {isAdmin ? 'Controle Mestre de Logística' : 'Portal do Condutor Profissional'}
+             </p>
           </div>
-
-          <div className="bg-white border border-slate-100 p-10 rounded-[4rem] shadow-2xl space-y-8">
+          <div className={`${isAdmin ? 'bg-white/5 border-white/10' : 'bg-white border-slate-100'} border backdrop-blur-2xl p-10 rounded-[4rem] shadow-2xl space-y-8`}>
             <form onSubmit={handleLogin} className="space-y-6">
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase ml-1 tracking-widest text-slate-400">Seu E-mail</label>
-                <input required type="email" placeholder="motorista@aurilog.com" className="w-full p-6 rounded-3xl font-bold outline-none border-2 border-transparent focus:border-primary-500 bg-slate-50 text-slate-900 transition-all" value={loginForm.email} onChange={e => setLoginForm({...loginForm, email: e.target.value})} />
+                <label className={`text-[10px] font-black uppercase ml-1 tracking-widest ${isAdmin ? 'text-slate-500' : 'text-slate-400'}`}>E-mail de Acesso</label>
+                <input required type="email" placeholder={isAdmin ? "gestor@aurilog.com" : "motorista@aurilog.com"} className={`w-full p-6 rounded-3xl font-bold outline-none border-2 border-transparent ${isAdmin ? 'bg-white/5 text-white focus:border-amber-500' : 'bg-slate-50 text-slate-900 focus:border-primary-500'} transition-all`} value={loginForm.email} onChange={e => setLoginForm({...loginForm, email: e.target.value})} />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase ml-1 tracking-widest text-slate-400">Senha</label>
-                <input required type="password" placeholder="••••••••" className="w-full p-6 rounded-3xl font-bold outline-none border-2 border-transparent focus:border-primary-500 bg-slate-50 text-slate-900 transition-all" value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} />
+                <label className={`text-[10px] font-black uppercase ml-1 tracking-widest ${isAdmin ? 'text-slate-500' : 'text-slate-400'}`}>Sua Senha</label>
+                <input required type="password" placeholder="••••••••" className={`w-full p-6 rounded-3xl font-bold outline-none border-2 border-transparent ${isAdmin ? 'bg-white/5 text-white focus:border-amber-500' : 'bg-slate-50 text-slate-900 focus:border-primary-500'} transition-all`} value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} />
               </div>
-              <button type="submit" disabled={isLoggingIn} className="w-full py-6 bg-primary-600 text-white rounded-[2rem] font-black uppercase text-xs shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3">
-                {isLoggingIn ? <Loader2 className="animate-spin" /> : <>Iniciar Jornada <ChevronRight size={18} /></>}
+              <button type="submit" disabled={isLoggingIn} className={`w-full py-6 rounded-[2rem] font-black uppercase text-xs shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3 ${isAdmin ? 'bg-amber-500 text-slate-950' : 'bg-primary-600 text-white'}`}>
+                {isLoggingIn ? <Loader2 className="animate-spin" /> : <>Entrar no Sistema <ChevronRight size={18} /></>}
               </button>
             </form>
           </div>
-          <p className="text-center text-[9px] font-bold text-slate-400 uppercase tracking-widest">Painel Operacional para Caminhoneiros</p>
+          <p className={`text-center text-[9px] font-bold uppercase tracking-widest ${isAdmin ? 'text-slate-700' : 'text-slate-300'}`}>© 2024 AuriLog Solutions</p>
         </div>
       </div>
     );
   }
 
-  // PORTAL ADMIN LOGADO
-  if (authRole === 'ADMIN') {
-    return (
-      <AdminPanel 
-        onRefresh={fetchData} 
-        onLogout={handleLogout} 
-        onUnlockDriverApp={() => { 
-          // Redireciona para o modo driver sem botão visual na login
-          window.location.href = window.location.origin + '?mode=driver';
-        }} 
-      />
-    );
-  }
+  if (authRole === 'ADMIN') return <AdminPanel onRefresh={fetchData} onLogout={handleLogout} />;
 
-  // PORTAL MOTORISTA LOGADO
   const NavItem = ({ view, icon: Icon, label }: { view: AppView, icon: any, label: string }) => (
     <button onClick={() => { setCurrentView(view); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === view ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}>
       <Icon size={20} /> {label}
@@ -283,7 +223,6 @@ const App: React.FC = () => {
           </div>
           <button onClick={() => setIsMenuOpen(false)} className="md:hidden p-3 bg-slate-100 rounded-full"><X size={24}/></button>
         </div>
-
         <div className="flex-1 flex flex-col gap-2 overflow-y-auto no-scrollbar">
           <NavItem view={AppView.DASHBOARD} icon={LayoutDashboard} label="Dashboard" />
           <NavItem view={AppView.TRIPS} icon={MapIcon} label="Viagens" />
@@ -294,7 +233,6 @@ const App: React.FC = () => {
           <NavItem view={AppView.JORNADA} icon={Timer} label="Jornada" />
           <NavItem view={AppView.STATIONS} icon={MapPinned} label="Radar" />
         </div>
-
         <div className="mt-6 pt-6 border-t space-y-4 safe-bottom">
           <button onClick={() => setShowNotifications(true)} className="w-full flex items-center justify-between gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase text-slate-500 hover:bg-slate-100 transition-all relative">
             <div className="flex items-center gap-4"><Bell size={20} /> Alertas</div>
@@ -303,15 +241,16 @@ const App: React.FC = () => {
           <button onClick={handleLogout} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase text-rose-500 hover:bg-rose-50 transition-all"><LogOut size={20} /> Sair</button>
         </div>
       </div>
-
       <main className="flex-1 overflow-y-auto h-full relative">
         <div className="md:hidden bg-white/80 backdrop-blur-md px-6 py-4 flex justify-between items-center border-b sticky top-0 z-50 safe-top">
           <h1 className="text-xl font-black text-primary-600 tracking-tighter">AURILOG</h1>
           <div className="flex items-center gap-2">
+            <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-[8px] font-black uppercase ${isOnline ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+              {isOnline ? <Wifi size={10}/> : <WifiOff size={10}/>} {isOnline ? 'Online' : 'Offline'}
+            </div>
             <button onClick={() => setShowNotifications(true)} className="p-3 bg-slate-50 rounded-xl text-slate-500 relative"><Bell size={24}/></button>
           </div>
         </div>
-        
         <div className="max-w-7xl mx-auto p-4 md:p-10 pb-32">
           {currentView === AppView.DASHBOARD && <Dashboard trips={trips} expenses={expenses} maintenance={maintenance} vehicles={vehicles} onSetView={setCurrentView} />}
           {currentView === AppView.TRIPS && <TripManager trips={trips} vehicles={vehicles} expenses={expenses} onAddTrip={(t) => handleAction('trips', t, 'insert')} onUpdateTrip={(id, t) => handleAction('trips', { ...t, id }, 'update')} onUpdateStatus={async (id, s, km) => { await handleAction('trips', { id, status: s }, 'update'); if (km && trips.find(x => x.id === id)?.vehicle_id) await handleAction('vehicles', { id: trips.find(x => x.id === id)!.vehicle_id, current_km: km }, 'update'); }} onDeleteTrip={(id) => handleAction('trips', { id }, 'delete')} isSaving={isSaving} isOnline={isOnline} />}
@@ -322,7 +261,6 @@ const App: React.FC = () => {
           {currentView === AppView.JORNADA && <JornadaManager mode={jornadaMode} startTime={jornadaStartTime} currentTime={jornadaCurrentTime} logs={jornadaLogs} setMode={setJornadaMode} setStartTime={setJornadaStartTime} onSaveLog={(l) => handleAction('jornada_logs', l, 'insert')} onDeleteLog={(id) => handleAction('jornada_logs', { id }, 'delete')} onClearHistory={async () => { if (!currentUser) return; setIsSaving(true); try { await supabase.from('jornada_logs').delete().eq('user_id', currentUser.id); setJornadaLogs([]); await fetchData(); } catch (err: any) { alert("Erro: " + err.message); } finally { setIsSaving(false); } }} addGlobalNotification={() => {}} isSaving={isSaving} />}
           {currentView === AppView.STATIONS && <StationLocator roadServices={roadServices} />}
         </div>
-
         <div className="md:hidden fixed bottom-0 inset-x-0 bg-white/90 backdrop-blur-xl border-t border-slate-100 flex justify-around items-center px-4 py-3 safe-bottom z-50 shadow-[0_-10px_30px_-15px_rgba(0,0,0,0.1)]">
           <button onClick={() => setCurrentView(AppView.DASHBOARD)} className={`flex flex-col items-center gap-1 transition-all ${currentView === AppView.DASHBOARD ? 'text-primary-600' : 'text-slate-400'}`}>
             <LayoutDashboard size={22} className={currentView === AppView.DASHBOARD ? 'scale-110' : ''} />
@@ -346,7 +284,6 @@ const App: React.FC = () => {
           </button>
         </div>
       </main>
-
       {showNotifications && (
         <NotificationCenter notifications={dbNotifications as any} onClose={() => setShowNotifications(false)} onAction={(cat) => { 
           const viewMap: Record<string, AppView> = { 'TRIP': AppView.TRIPS, 'FINANCE': AppView.EXPENSES, 'MAINTENANCE': AppView.MAINTENANCE, 'JORNADA': AppView.JORNADA, 'GENERAL': AppView.DASHBOARD };
