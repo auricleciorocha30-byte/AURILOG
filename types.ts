@@ -1,5 +1,4 @@
 
-
 export enum AppView {
   DASHBOARD = 'DASHBOARD',
   TRIPS = 'TRIPS',
@@ -17,6 +16,12 @@ export enum TripStatus {
   IN_PROGRESS = 'Em Andamento',
   COMPLETED = 'Concluída',
   CANCELLED = 'Cancelada'
+}
+
+export interface CargoCategory {
+  id: string;
+  name: string;
+  created_at?: string;
 }
 
 export interface Driver {
