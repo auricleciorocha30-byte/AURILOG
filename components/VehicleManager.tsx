@@ -55,15 +55,18 @@ export const VehicleManager: React.FC<VehicleManagerProps> = ({ vehicles, onAddV
   };
 
   return (
-    <div className="space-y-6 animate-fade-in pb-10">
-      <div className="flex justify-between items-center px-2">
-        <h2 className="text-2xl font-black text-slate-900">Frota de Veículos</h2>
-        <button onClick={() => { resetForm(); setIsModalOpen(true); }} className="bg-primary-600 text-white px-6 py-3 rounded-2xl flex items-center gap-2 font-bold shadow-lg active:scale-95 transition-all">
+        <div className="space-y-6 animate-fade-in pb-10 px-4">
+            <div className="flex flex-col md:flex-row justify-between md:items-center px-2">
+                <div>
+          <h2 className="text-4xl font-black text-slate-900 tracking-tighter uppercase leading-none">Frota de Veículos</h2>
+          <p className="text-slate-400 font-bold text-sm uppercase tracking-widest mt-2">Gestão de Caminhões</p>
+        </div>
+                <button onClick={() => { resetForm(); setIsModalOpen(true); }} className="bg-primary-600 text-white px-6 py-3 rounded-2xl flex items-center gap-2 font-bold shadow-lg active:scale-95 transition-all mt-4 md:mt-0">
           <Plus size={20} /> Novo Veículo
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 px-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {vehicles.map(v => (
           <div key={v.id} className="bg-white p-6 rounded-[2.5rem] border shadow-sm relative group hover:border-primary-200 transition-colors">
             <div className="flex justify-between items-start mb-6">
@@ -102,7 +105,7 @@ export const VehicleManager: React.FC<VehicleManagerProps> = ({ vehicles, onAddV
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-start justify-center p-4 z-50 overflow-y-auto">
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl animate-fade-in relative mt-10 mb-10 overflow-hidden">
             <div className="flex justify-between items-center p-8 pb-4 border-b border-slate-50">
               <h3 className="text-2xl font-black">{editingId ? 'Editar Veículo' : 'Cadastrar Veículo'}</h3>
