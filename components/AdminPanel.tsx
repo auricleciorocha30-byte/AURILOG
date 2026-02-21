@@ -461,11 +461,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, cur
                  {selectedDriverData?.location ? (
                     <iframe 
                       title="Live Tracking" 
-                      className="w-full h-full border-0 grayscale invert opacity-60 transition-all" 
-                      src={`https://www.google.com/maps?q=${selectedDriverData.location.latitude},${selectedDriverData.location.longitude}&z=15&output=embed`} 
+                      className="w-full h-full border-0 transition-all" 
+                      src={`https://maps.google.com/maps?q=${selectedDriverData.location.latitude},${selectedDriverData.location.longitude}&t=&z=15&ie=UTF8&iwloc=&output=embed`} 
                     />
                  ) : (
-                    <iframe title="Map Background" className="w-full h-full border-0 grayscale invert opacity-10" src="https://www.google.com/maps/embed?pb=!1m14!1m12!1m3!1d15000000!2d-50!3d-15!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!5e0!3m2!1sen!2sbr!4v1" />
+                    <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center opacity-50">
+                        <Radar size={64} className="text-slate-700 mb-4" />
+                        <p className="text-slate-600 text-xs font-black uppercase tracking-widest">Aguardando Seleção</p>
+                    </div>
                  )}
 
                  {selectedDriverData && (
@@ -478,24 +481,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, cur
                           </div>
                        </div>
                        <div className="flex gap-2">
-                          <button onClick={() => window.open(`https://www.google.com/maps?q=${selectedDriverData.location?.latitude},${selectedDriverData.location?.longitude}`, '_blank')} className="p-3 bg-white/5 rounded-xl text-white hover:bg-white/10 transition-all"><ExternalLink size={20}/></button>
-                           <button 
-                             onClick={() => {
-                               const url = `https://www.google.com/maps?q=${selectedDriverData.location?.latitude},${selectedDriverData.location?.longitude}`;
-                               const text = `Localização de ${selectedDriverData.name}: ${url}`;
-                               if (navigator.share) {
-                                 navigator.share({ title: 'Rastreamento AuriLog', text, url });
-                               } else {
-                                 navigator.clipboard.writeText(text);
-                                 alert("Link de localização copiado para a área de transferência!");
-                               }
-                             }} 
-                             className="p-3 bg-amber-500 text-slate-950 rounded-xl hover:bg-amber-400 transition-all flex items-center gap-2 font-black text-[10px] uppercase px-4"
-                             title="Mandar Localização"
-                           >
-                             <Send size={18}/> Mandar
-                           </button>
-                          <button onClick={() => setSelectedDriverId(null)} className="p-3 bg-white/5 rounded-xl text-slate-500 hover:text-white"><X size={20}/></button>
+                          <button onClick={() => window.open(`https://www.google.com/maps?q=${selectedDriverData.location?.latitude},${selectedDriverData.location?.longitude}`, '_blank')} className="p-3 bg-white/5 rounded-xl text-white hover:bg-white/10 transition-all" title="Abrir no Google Maps Externo"><ExternalLink size={20}/></button>
+                          <button onClick={() => setSelectedDriverId(null)} className="p-3 bg-white/5 rounded-xl text-slate-500 hover:text-white" title="Fechar Mapa"><X size={20}/></button>
                        </div>
                     </div>
                  )}
