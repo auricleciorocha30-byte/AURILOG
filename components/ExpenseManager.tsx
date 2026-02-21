@@ -262,7 +262,7 @@ export const ExpenseManager: React.FC<ExpenseManagerProps> = ({ expenses, trips,
 
       {modalType && (
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md flex items-end md:items-center justify-center p-0 md:p-6 z-[100] animate-fade-in">
-          <div className="bg-white rounded-t-[2.5rem] md:rounded-[3rem] w-full md:max-w-xl p-6 md:p-12 shadow-2xl animate-slide-up h-[90vh] md:h-auto md:max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-t-[2.5rem] md:rounded-[3rem] w-full md:max-w-xl p-6 md:p-12 shadow-2xl animate-slide-up max-h-[85vh] h-auto md:h-auto md:max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-8">
               <div>
                 <span className="text-xs font-black uppercase text-primary-600 tracking-[0.2em]">{modalType === 'FIXED' ? 'Lançamento Fixo' : 'Lançamento Viagem'}</span>
@@ -273,7 +273,7 @@ export const ExpenseManager: React.FC<ExpenseManagerProps> = ({ expenses, trips,
               <button onClick={resetForm} className="bg-slate-100 p-5 rounded-full text-slate-400 hover:text-slate-900 transition-all"><X size={28} /></button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6 pb-32">
+            <form onSubmit={handleSubmit} className="space-y-6 pb-12">
               <div className="space-y-2">
                 <label className="text-[11px] font-black uppercase text-slate-400 ml-1">O que foi pago?</label>
                 <input required type="text" placeholder="Ex: Prestação, Seguro, Diesel..." className="w-full p-5 bg-slate-50 rounded-3xl border-2 border-transparent focus:border-primary-500 font-bold outline-none text-lg transition-all" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
