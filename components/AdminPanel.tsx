@@ -50,9 +50,8 @@ interface AdminPanelProps {
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, currentUser }) => {
-  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'DRIVERS' | 'FLEET' | 'PARTNERS' | 'TRACKING' | 'ALERTS' | 'CONFIG'>('OVERVIEW');
+  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'DRIVERS' | 'FLEET' | 'PARTNERS' | 'ALERTS' | 'CONFIG'>('OVERVIEW');
   const [loading, setLoading] = useState(false);
-  const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
   
   // Dados Consolidados
   const [allTrips, setAllTrips] = useState<Trip[]>([]);
@@ -61,7 +60,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, cur
   const [allMaintenance, setAllMaintenance] = useState<MaintenanceItem[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [roadServices, setRoadServices] = useState<RoadService[]>([]);
-  const [locations, setLocations] = useState<UserLocation[]>([]);
   const [categories, setCategories] = useState<CargoCategory[]>([]);
   
   // Forms
@@ -80,25 +78,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, cur
 
   useEffect(() => { 
     loadAllAdminData();
-    const interval = setInterval(() => {
-      refreshLocations();
-    }, 15000);
-    return () => clearInterval(interval);
   }, []);
 
   const loadAllAdminData = async () => {
     setLoading(true);
     try {
       // Carregamento resiliente: se categorias falhar, o resto carrega
-      // Ordenamos user_locations por updated_at desc para pegar sempre o mais recente no .find()
-      const [tripsRes, expensesRes, vehiclesRes, maintenanceRes, driversRes, servicesRes, locRes] = await Promise.all([
+      const [tripsRes, expensesRes, vehiclesRes, maintenanceRes, driversRes, servicesRes] = await Promise.all([
         supabase.from('trips').select('*'),
         supabase.from('expenses').select('*'),
         supabase.from('vehicles').select('*'),
         supabase.from('maintenance').select('*'),
         supabase.from('drivers').select('*'),
-        supabase.from('road_services').select('*'),
-        supabase.from('user_locations').select('*').order('updated_at', { ascending: false })
+        supabase.from('road_services').select('*')
       ]);
 
       if (tripsRes.data) setAllTrips(tripsRes.data);
@@ -107,7 +99,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, cur
       if (maintenanceRes.data) setAllMaintenance(maintenanceRes.data);
       if (driversRes.data) setDrivers(driversRes.data);
       if (servicesRes.data) setRoadServices(servicesRes.data);
-      if (locRes.data) setLocations(locRes.data);
 
       // Tenta carregar categorias separadamente
       const { data: catData } = await supabase.from('cargo_categories').select('*').order('name', { ascending: true });
@@ -118,11 +109,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, cur
     } finally { 
       setLoading(false); 
     }
-  };
-
-  const refreshLocations = async () => {
-    const { data } = await supabase.from('user_locations').select('*').order('updated_at', { ascending: false });
-    if (data) setLocations(data);
   };
 
   const backupData = useMemo(() => ({
@@ -280,20 +266,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, cur
     link.click();
   };
 
-  const driversWithLocations = useMemo(() => {
-    return drivers.map(d => {
-      // Como locations está ordenado por updated_at desc, o .find() pega o mais recente
-      // O 'locations' já vem ordenado do Supabase
-      const loc = locations.find(l => l.user_id === d.id || l.email === d.email);
-      return { ...d, location: loc };
-    });
-  }, [drivers, locations]);
-
-  const selectedDriverData = useMemo(() => {
-    if (!selectedDriverId) return null;
-    return driversWithLocations.find(d => d.id === selectedDriverId);
-  }, [selectedDriverId, driversWithLocations]);
-
   const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
   return (
@@ -320,7 +292,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, cur
         <div className="flex overflow-x-auto no-scrollbar gap-2 bg-white/5 p-1.5 rounded-[2.5rem]">
           {[
             { id: 'OVERVIEW', label: 'Dashboard', icon: TrendingUp },
-            { id: 'TRACKING', label: 'Rastreamento', icon: MapPinned },
             { id: 'DRIVERS', label: 'Equipe', icon: Users },
             { id: 'FLEET', label: 'Frota', icon: Truck },
             { id: 'PARTNERS', label: 'Parceiros', icon: Store },
@@ -404,79 +375,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, cur
           </div>
         )}
 
-        {activeTab === 'TRACKING' && (
-           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-fade-in h-[750px]">
-              <div className="bg-white/5 p-8 rounded-[4rem] border border-white/10 flex flex-col h-full">
-                 <div className="flex justify-between items-center mb-8">
-                    <h3 className="text-xl font-black uppercase flex items-center gap-3"><Users className="text-amber-500"/> Equipe Logada</h3>
-                    <button onClick={refreshLocations} className="p-2 bg-white/5 rounded-xl text-slate-500 hover:text-white" title="Forçar Atualização"><RefreshCcw size={16}/></button>
-                 </div>
-                 <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
-                    {driversWithLocations.length === 0 ? (
-                       <div className="text-center py-20 flex flex-col items-center">
-                          <Users size={48} className="text-slate-800 mb-4" />
-                          <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Nenhum condutor encontrado.</p>
-                       </div>
-                    ) : driversWithLocations.map(driver => (
-                       <div 
-                         key={driver.id} 
-                         onClick={() => setSelectedDriverId(driver.id)}
-                         className={`p-5 bg-slate-900 border cursor-pointer rounded-3xl flex justify-between items-center transition-all ${selectedDriverId === driver.id ? 'border-amber-500 ring-2 ring-amber-500/20 shadow-xl shadow-amber-500/10' : 'border-white/5 hover:border-white/20'}`}
-                       >
-                          <div className="flex-1 overflow-hidden">
-                             <div className="flex items-center gap-2">
-                                <p className="text-sm font-black uppercase truncate tracking-tighter">{driver.name}</p>
-                                {driver.location ? <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_#10b981]"></span> : <span className="w-2 h-2 bg-slate-700 rounded-full"></span>}
-                             </div>
-                             <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1">
-                                {driver.location ? `Última conexão: ${new Date(driver.location.updated_at).toLocaleTimeString()}` : 'Sem rastreio ativo'}
-                             </p>
-                          </div>
-                          {driver.location && <MapPin size={16} className={selectedDriverId === driver.id ? 'text-amber-500' : 'text-slate-600'}/>}
-                       </div>
-                    ))}
-                 </div>
-              </div>
-              <div className="lg:col-span-2 bg-white/5 rounded-[4rem] border border-white/10 overflow-hidden relative group">
-                 <div className={`absolute inset-0 flex items-center justify-center bg-slate-950/40 backdrop-blur-sm z-10 transition-all pointer-events-none ${selectedDriverId ? 'opacity-0' : 'opacity-100'}`}>
-                    <div className="text-center p-10 bg-slate-950/80 rounded-3xl border border-white/10 max-w-sm backdrop-blur-xl">
-                       <Radar size={48} className="text-amber-500 mx-auto mb-4 animate-pulse" />
-                       <h4 className="text-lg font-black uppercase mb-2 tracking-tighter">Radar de Frota</h4>
-                       <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest leading-relaxed">Selecione um motorista ao lado para visualizar o ponto exato no mapa satélite.</p>
-                    </div>
-                 </div>
-                 
-                 {selectedDriverData?.location ? (
-                    <iframe 
-                      title="Live Tracking" 
-                      className="w-full h-full border-0 transition-all" 
-                      src={`https://maps.google.com/maps?q=${selectedDriverData.location.latitude},${selectedDriverData.location.longitude}&t=&z=15&ie=UTF8&iwloc=&output=embed`} 
-                    />
-                 ) : (
-                    <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center opacity-50">
-                        <Radar size={64} className="text-slate-700 mb-4" />
-                        <p className="text-slate-600 text-xs font-black uppercase tracking-widest">Aguardando Seleção</p>
-                    </div>
-                 )}
 
-                 {selectedDriverData && (
-                    <div className="absolute bottom-8 left-8 right-8 bg-slate-950/90 backdrop-blur-xl border border-white/10 p-6 rounded-[2.5rem] flex items-center justify-between z-20 animate-slide-up">
-                       <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 bg-amber-500 rounded-2xl flex items-center justify-center font-black text-slate-950">{selectedDriverData.name[0]}</div>
-                          <div>
-                             <h4 className="font-black text-sm uppercase">{selectedDriverData.name}</h4>
-                             <p className="text-[10px] text-amber-500 font-bold uppercase">{selectedDriverData.location ? `Lat: ${selectedDriverData.location.latitude.toFixed(4)} | Long: ${selectedDriverData.location.longitude.toFixed(4)}` : 'Localização indisponível'}</p>
-                          </div>
-                       </div>
-                       <div className="flex gap-2">
-                          <button onClick={() => window.open(`https://www.google.com/maps?q=${selectedDriverData.location?.latitude},${selectedDriverData.location?.longitude}`, '_blank')} className="p-3 bg-white/5 rounded-xl text-white hover:bg-white/10 transition-all" title="Abrir no Google Maps Externo"><ExternalLink size={20}/></button>
-                          <button onClick={() => setSelectedDriverId(null)} className="p-3 bg-white/5 rounded-xl text-slate-500 hover:text-white" title="Fechar Mapa"><X size={20}/></button>
-                       </div>
-                    </div>
-                 )}
-              </div>
-           </div>
-        )}
 
         {activeTab === 'DRIVERS' && (
            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fade-in">

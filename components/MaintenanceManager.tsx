@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MaintenanceItem, Vehicle } from '../types';
-import { Plus, CheckSquare, Calendar, ShieldCheck, Trash2, Loader2, Gauge, AlertTriangle, CheckCircle2, Info, X } from 'lucide-react';
+import { Plus, CheckSquare, Calendar, ShieldCheck, Trash2, Loader2, Gauge, AlertTriangle, CheckCircle2, Info, X, Wrench } from 'lucide-react';
 
 interface MaintenanceManagerProps {
   maintenance: MaintenanceItem[];
