@@ -81,10 +81,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, cur
   useEffect(() => { 
     loadAllAdminData();
     const interval = setInterval(() => {
-      if (activeTab === 'TRACKING' && selectedDriverId) refreshLocations();
-    }, 30000);
+      refreshLocations();
+    }, 15000);
     return () => clearInterval(interval);
-  }, [activeTab, selectedDriverId]);
+  }, []);
 
   const loadAllAdminData = async () => {
     setLoading(true);
@@ -121,20 +121,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, cur
   };
 
   const refreshLocations = async () => {
-    // Se houver um motorista selecionado, atualizamos apenas ele para focar o rastreio
-    if (selectedDriverId) {
-      const { data } = await supabase.from('user_locations').select('*').eq('user_id', selectedDriverId).order('updated_at', { ascending: false });
-      if (data && data.length > 0) {
-        setLocations(prev => {
-          const filtered = prev.filter(l => l.user_id !== selectedDriverId);
-          return [data[0], ...filtered];
-        });
-      }
-    } else {
-      // Caso contrário, atualizamos todos
-      const { data } = await supabase.from('user_locations').select('*').order('updated_at', { ascending: false });
-      if (data) setLocations(data);
-    }
+    const { data } = await supabase.from('user_locations').select('*').order('updated_at', { ascending: false });
+    if (data) setLocations(data);
   };
 
   const backupData = useMemo(() => ({
