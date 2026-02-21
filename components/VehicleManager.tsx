@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Vehicle } from '../types';
 import { Plus, Settings, Truck, Trash2, Loader2, Edit2, X, ChevronDown } from 'lucide-react';
 import { ANTT_CARGO_TYPES } from '../services/anttService';
@@ -104,9 +105,9 @@ export const VehicleManager: React.FC<VehicleManagerProps> = ({ vehicles, onAddV
         ))}
       </div>
 
-      {isModalOpen && (
-                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-4 z-[100] animate-fade-in">
-          <div className="bg-white w-full max-w-md rounded-t-[2.5rem] md:rounded-[2.5rem] shadow-2xl animate-slide-up relative max-h-[85vh] h-auto md:h-auto md:max-h-[90vh] overflow-y-auto">
+      {isModalOpen && createPortal(
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-4 z-[100] animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-t-[2.5rem] md:rounded-[2.5rem] shadow-2xl animate-slide-up relative max-h-[90vh] h-auto md:h-auto md:max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center p-8 pb-4 border-b border-slate-50">
               <h3 className="text-2xl font-black">{editingId ? 'Editar Veículo' : 'Cadastrar Veículo'}</h3>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={28} /></button>
@@ -160,7 +161,8 @@ export const VehicleManager: React.FC<VehicleManagerProps> = ({ vehicles, onAddV
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

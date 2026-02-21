@@ -1,5 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Trip, TripStatus, Vehicle, TripStop, Expense } from '../types';
 import { Plus, MapPin, Calendar, Truck, Navigation, X, Trash2, Map as MapIcon, Edit2, DollarSign, Loader2, CheckCircle2, Calculator, Wifi, WifiOff, Smartphone, MapPinCheck, Percent, Wallet, ReceiptText, TrendingUp, TrendingDown } from 'lucide-react';
 import { calculateANTT } from '../services/anttService';
@@ -307,9 +308,9 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
         })}
       </div>
 
-      {isModalOpen && (
+      {isModalOpen && createPortal(
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md flex items-end md:items-center justify-center p-0 md:p-6 z-[100] animate-fade-in">
-          <div className="bg-white w-full md:max-w-2xl rounded-t-[2.5rem] md:rounded-[3rem] shadow-2xl animate-slide-up relative max-h-[85vh] h-auto md:h-auto md:max-h-[90vh] overflow-y-auto pb-10">
+          <div className="bg-white w-full md:max-w-2xl rounded-t-[2.5rem] md:rounded-[3rem] shadow-2xl animate-slide-up relative max-h-[90vh] h-auto md:h-auto md:max-h-[90vh] overflow-y-auto pb-10">
             <div className="flex justify-between items-center p-6 md:p-10 pb-4">
               <div>
                 <span className="text-xs font-black uppercase text-primary-600 tracking-widest">Gestão Operacional</span>
@@ -403,11 +404,12 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Modal de Atualização de KM */}
-      {isKmModalOpen && (
+      {isKmModalOpen && createPortal(
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md flex items-center justify-center p-6 z-[110] animate-fade-in">
           <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-scale-up">
             <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight mb-2">Finalizar Viagem</h3>
@@ -431,7 +433,8 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
                </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
