@@ -261,8 +261,8 @@ export const ExpenseManager: React.FC<ExpenseManagerProps> = ({ expenses, trips,
       </div>
 
       {modalType && (
-        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md flex items-end md:items-center justify-center p-0 md:p-6 z-[100] animate-fade-in" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
-          <div className="bg-white rounded-t-[4rem] md:rounded-[3rem] w-full max-w-xl p-8 md:p-12 shadow-2xl animate-slide-up h-[90vh] md:h-auto overflow-y-auto mt-[env(safe-area-inset-top)]">
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md flex items-end md:items-center justify-center p-0 md:p-6 z-[100] animate-fade-in">
+          <div className="bg-white rounded-t-[4rem] md:rounded-[3rem] w-full max-w-xl p-8 md:p-12 shadow-2xl animate-slide-up h-[85vh] md:h-auto overflow-y-auto">
             <div className="flex justify-between items-center mb-8">
               <div>
                 <span className="text-xs font-black uppercase text-primary-600 tracking-[0.2em]">{modalType === 'FIXED' ? 'Lançamento Fixo' : 'Lançamento Viagem'}</span>

@@ -132,7 +132,7 @@ export const MaintenanceManager: React.FC<MaintenanceManagerProps> = ({ maintena
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-end md:items-center justify-center p-0 md:p-4 z-50 overflow-y-auto">
-          <div className="bg-white w-full max-w-md rounded-t-[3rem] md:rounded-[2.5rem] p-8 shadow-2xl animate-fade-in my-0 md:my-8 h-[90vh] md:h-auto overflow-y-auto mt-[env(safe-area-inset-top)]">
+          <div className="bg-white w-full max-w-md rounded-t-[3rem] md:rounded-[2.5rem] p-8 shadow-2xl animate-slide-up my-0 md:my-8 h-[85vh] md:h-auto overflow-y-auto">
             <div className="flex justify-between items-center mb-8">
                <h3 className="text-2xl font-black text-slate-900">Lançar Manutenção</h3>
                <button onClick={() => setIsModalOpen(false)} className="text-slate-400"><X size={28}/></button>

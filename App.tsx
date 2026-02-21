@@ -391,6 +391,11 @@ const App: React.FC = () => {
       const table = appContext === 'DRIVER' ? 'drivers' : 'admins';
       const { data: dbUser, error } = await supabase.from(table).select('*').eq('email', inputEmail).eq('password', inputPassword).maybeSingle();
       if (error || !dbUser) throw new Error("Credenciais inválidas.");
+      
+      if (appContext === 'DRIVER' && dbUser.status === 'BANNED') {
+        throw new Error("Seu acesso foi suspenso pela administração. Entre em contato com o suporte.");
+      }
+
       setCurrentUser(dbUser);
       setAuthRole(appContext);
       localStorage.setItem('aurilog_role', appContext);
@@ -460,7 +465,7 @@ const App: React.FC = () => {
     );
   }
 
-  if (authRole === 'ADMIN') return <AdminPanel onRefresh={fetchData} onLogout={handleLogout} />;
+  if (authRole === 'ADMIN') return <AdminPanel onRefresh={fetchData} onLogout={handleLogout} currentUser={currentUser} />;
 
   const NavItem = ({ view, icon: Icon, label }: { view: AppView, icon: any, label: string }) => (
     <button onClick={() => { setCurrentView(view); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === view ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}>

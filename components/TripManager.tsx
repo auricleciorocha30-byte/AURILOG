@@ -309,7 +309,7 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md flex items-end md:items-center justify-center p-0 md:p-6 z-[100] animate-fade-in">
-          <div className="bg-white w-full max-w-2xl rounded-t-[4rem] md:rounded-[3rem] shadow-2xl animate-slide-up relative h-[92vh] md:h-auto overflow-y-auto pb-10">
+          <div className="bg-white w-full max-w-2xl rounded-t-[4rem] md:rounded-[3rem] shadow-2xl animate-slide-up relative h-[85vh] md:h-auto overflow-y-auto pb-10">
             <div className="flex justify-between items-center p-6 md:p-10 pb-4">
               <div>
                 <span className="text-xs font-black uppercase text-primary-600 tracking-widest">Gestão Operacional</span>

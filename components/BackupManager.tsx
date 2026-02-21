@@ -6,9 +6,10 @@ import { supabase } from '../lib/supabase';
 interface BackupManagerProps {
   data: any;
   onRestored: () => void;
+  userId?: string;
 }
 
-export const BackupManager: React.FC<BackupManagerProps> = ({ data, onRestored }) => {
+export const BackupManager: React.FC<BackupManagerProps> = ({ data, onRestored, userId }) => {
   const [restoring, setRestoring] = useState(false);
   const [success, setSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -33,14 +34,19 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ data, onRestored }
       const text = await file.text();
       const backup = JSON.parse(text);
       
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Usuário não autenticado.");
+      let targetUserId = userId;
+      
+      if (!targetUserId) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("Usuário não autenticado.");
+        targetUserId = user.id;
+      }
 
       // Lógica de restauração simplificada: Upsert por tabela
       const tables = ['vehicles', 'trips', 'expenses', 'maintenance'];
       for (const table of tables) {
         if (backup[table] && Array.isArray(backup[table])) {
-          const rows = backup[table].map((row: any) => ({ ...row, user_id: user.id }));
+          const rows = backup[table].map((row: any) => ({ ...row, user_id: targetUserId }));
           const { error } = await supabase.from(table).upsert(rows);
           if (error) console.error(`Erro ao restaurar ${table}:`, error.message);
         }

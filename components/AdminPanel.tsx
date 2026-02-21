@@ -35,17 +35,21 @@ import {
   Plus,
   User,
   History,
-  UserCheck
+  UserCheck,
+  Database,
+  Ban
 } from 'lucide-react';
+import { BackupManager } from './BackupManager';
 import { supabase } from '../lib/supabase';
 import { RoadService, DbNotification, UserLocation, Trip, Expense, Vehicle, MaintenanceItem, Driver, TripStatus, CargoCategory } from '../types';
 
 interface AdminPanelProps {
   onRefresh: () => void;
   onLogout: () => void;
+  currentUser: any;
 }
 
-export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) => {
+export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout, currentUser }) => {
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'DRIVERS' | 'FLEET' | 'PARTNERS' | 'TRACKING' | 'ALERTS' | 'CONFIG'>('OVERVIEW');
   const [loading, setLoading] = useState(false);
   const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
@@ -77,10 +81,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
   useEffect(() => { 
     loadAllAdminData();
     const interval = setInterval(() => {
-      if (activeTab === 'TRACKING') refreshLocations();
+      if (activeTab === 'TRACKING' && selectedDriverId) refreshLocations();
     }, 30000);
     return () => clearInterval(interval);
-  }, [activeTab]);
+  }, [activeTab, selectedDriverId]);
 
   const loadAllAdminData = async () => {
     setLoading(true);
@@ -117,10 +121,31 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
   };
 
   const refreshLocations = async () => {
-    // Garante que pegamos as localizações mais recentes primeiro e força atualização
-    const { data } = await supabase.from('user_locations').select('*').order('updated_at', { ascending: false });
-    if (data) setLocations(data);
+    // Se houver um motorista selecionado, atualizamos apenas ele para focar o rastreio
+    if (selectedDriverId) {
+      const { data } = await supabase.from('user_locations').select('*').eq('user_id', selectedDriverId).order('updated_at', { ascending: false });
+      if (data && data.length > 0) {
+        setLocations(prev => {
+          const filtered = prev.filter(l => l.user_id !== selectedDriverId);
+          return [data[0], ...filtered];
+        });
+      }
+    } else {
+      // Caso contrário, atualizamos todos
+      const { data } = await supabase.from('user_locations').select('*').order('updated_at', { ascending: false });
+      if (data) setLocations(data);
+    }
   };
+
+  const backupData = useMemo(() => ({
+    trips: allTrips,
+    expenses: allExpenses,
+    vehicles: allVehicles,
+    maintenance: allMaintenance,
+    drivers: drivers,
+    road_services: roadServices,
+    cargo_categories: categories
+  }), [allTrips, allExpenses, allVehicles, allMaintenance, drivers, roadServices, categories]);
 
   const totals = useMemo(() => {
     const revenue = allTrips.filter(t => t.status === TripStatus.COMPLETED).reduce((acc, t) => acc + (Number(t.agreed_price) || 0), 0);
@@ -237,6 +262,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
     setLoading(true);
     try {
       const { error } = await supabase.from(table).delete().eq('id', id);
+      if (error) throw error;
+      loadAllAdminData();
+    } catch (err: any) { alert(err.message); } finally { setLoading(false); }
+  };
+
+  const toggleDriverStatus = async (id: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'BANNED' ? 'ACTIVE' : 'BANNED';
+    const confirmMsg = newStatus === 'BANNED' ? "Deseja realmente banir este motorista? Ele perderá o acesso ao portal imediatamente." : "Deseja reativar o acesso deste motorista?";
+    if (!confirm(confirmMsg)) return;
+    
+    setLoading(true);
+    try {
+      const { error } = await supabase.from('drivers').update({ status: newStatus }).eq('id', id);
       if (error) throw error;
       loadAllAdminData();
     } catch (err: any) { alert(err.message); } finally { setLoading(false); }
@@ -441,6 +479,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                        </div>
                        <div className="flex gap-2">
                           <button onClick={() => window.open(`https://www.google.com/maps?q=${selectedDriverData.location?.latitude},${selectedDriverData.location?.longitude}`, '_blank')} className="p-3 bg-white/5 rounded-xl text-white hover:bg-white/10 transition-all"><ExternalLink size={20}/></button>
+                           <button 
+                             onClick={() => {
+                               const url = `https://www.google.com/maps?q=${selectedDriverData.location?.latitude},${selectedDriverData.location?.longitude}`;
+                               const text = `Localização de ${selectedDriverData.name}: ${url}`;
+                               if (navigator.share) {
+                                 navigator.share({ title: 'Rastreamento AuriLog', text, url });
+                               } else {
+                                 navigator.clipboard.writeText(text);
+                                 alert("Link de localização copiado para a área de transferência!");
+                               }
+                             }} 
+                             className="p-3 bg-amber-500 text-slate-950 rounded-xl hover:bg-amber-400 transition-all flex items-center gap-2 font-black text-[10px] uppercase px-4"
+                             title="Mandar Localização"
+                           >
+                             <Send size={18}/> Mandar
+                           </button>
                           <button onClick={() => setSelectedDriverId(null)} className="p-3 bg-white/5 rounded-xl text-slate-500 hover:text-white"><X size={20}/></button>
                        </div>
                     </div>
@@ -466,15 +520,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                  <h3 className="text-2xl font-black mb-8 uppercase tracking-tighter">Condutores Cadastrados</h3>
                  <div className="space-y-4 max-h-[500px] overflow-y-auto pr-4 custom-scrollbar">
                     {drivers.map(d => (
-                       <div key={d.id} className="p-6 bg-slate-900/50 border border-white/5 rounded-3xl flex justify-between items-center group hover:border-white/10 transition-all">
+                       <div key={d.id} className={`p-6 bg-slate-900/50 border rounded-3xl flex justify-between items-center group transition-all ${d.status === 'BANNED' ? 'border-rose-500/30 opacity-70' : 'border-white/5 hover:border-white/10'}`}>
                           <div className="flex items-center gap-4">
-                             <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center font-black text-amber-500 uppercase">{d.name[0]}</div>
+                             <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black uppercase ${d.status === 'BANNED' ? 'bg-rose-500/10 text-rose-500' : 'bg-white/5 text-amber-500'}`}>{d.name[0]}</div>
                              <div>
-                                <p className="text-sm font-black uppercase tracking-tighter">{d.name}</p>
+                                <p className="text-sm font-black uppercase tracking-tighter flex items-center gap-2">
+                                  {d.name}
+                                  {d.status === 'BANNED' && <span className="text-[8px] bg-rose-500 text-white px-2 py-0.5 rounded-full">BANIDO</span>}
+                                </p>
                                 <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{d.email}</p>
                              </div>
                           </div>
-                          <button onClick={() => deleteRecord('drivers', d.id)} className="p-3 text-slate-500 hover:text-rose-500 transition-all opacity-0 group-hover:opacity-100"><Trash2 size={20}/></button>
+                          <div className="flex items-center gap-2">
+                             <button 
+                               onClick={() => toggleDriverStatus(d.id, d.status)} 
+                               className={`p-3 transition-all opacity-0 group-hover:opacity-100 ${d.status === 'BANNED' ? 'text-emerald-500 hover:bg-emerald-500/10' : 'text-amber-500 hover:bg-amber-500/10'}`}
+                               title={d.status === 'BANNED' ? 'Reativar Motorista' : 'Banir Motorista'}
+                             >
+                               {d.status === 'BANNED' ? <UserCheck size={20}/> : <Ban size={20}/>}
+                             </button>
+                             <button onClick={() => deleteRecord('drivers', d.id)} className="p-3 text-slate-500 hover:text-rose-500 transition-all opacity-0 group-hover:opacity-100"><Trash2 size={20}/></button>
+                          </div>
                        </div>
                     ))}
                  </div>
@@ -624,24 +690,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onRefresh, onLogout }) =
                  </div>
               </div>
               <div className="bg-white/5 p-10 rounded-[4rem] border border-white/10">
-                 <h3 className="text-2xl font-black mb-6 uppercase flex items-center gap-3 tracking-tighter"><Settings className="text-amber-500" size={28}/> Sistema Geral</h3>
-                 <div className="space-y-6">
-                    <div className="flex justify-between items-center py-6 border-b border-white/5">
-                       <div>
-                          <p className="font-bold text-sm uppercase tracking-tighter">Backup Centralizado</p>
-                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Sincronização redundante ativa</p>
-                       </div>
-                       <div className="w-12 h-6 bg-emerald-500 rounded-full flex items-center px-1"><div className="w-4 h-4 bg-white rounded-full ml-auto"></div></div>
-                    </div>
-                    <div className="flex justify-between items-center py-6 border-b border-white/5">
-                       <div>
-                          <p className="font-bold text-sm uppercase tracking-tighter">Monitor de Auditoria</p>
-                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Registro de logs administrativos</p>
-                       </div>
-                       <div className="w-12 h-6 bg-amber-500 rounded-full flex items-center px-1"><div className="w-4 h-4 bg-white rounded-full ml-auto"></div></div>
-                    </div>
+                 <h3 className="text-2xl font-black mb-6 uppercase flex items-center gap-3 tracking-tighter"><Database className="text-amber-500" size={28}/> Backup e Restauração</h3>
+                 <div className="scale-90 origin-top-left -ml-4">
+                    <BackupManager data={backupData} onRestored={loadAllAdminData} userId={currentUser?.id} />
                  </div>
-                 <button onClick={() => { if(confirm("Deseja mesmo limpar todos os comunicados antigos?")) supabase.from('notifications').delete().not('id', 'is', null).then(loadAllAdminData) }} className="w-full mt-10 py-4 border-2 border-rose-500/20 text-rose-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-500 hover:text-white transition-all">Limpar Histórico de Alertas</button>
+                 <button onClick={() => { if(confirm("Deseja mesmo limpar todos os comunicados antigos?")) supabase.from('notifications').delete().not('id', 'is', null).then(loadAllAdminData) }} className="w-full mt-4 py-4 border-2 border-rose-500/20 text-rose-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-500 hover:text-white transition-all">Limpar Histórico de Alertas</button>
               </div>
            </div>
         )}
