@@ -13,8 +13,6 @@ import { JornadaManager } from './components/JornadaManager';
 import { StationLocator } from './components/StationLocator';
 import { AdminPanel } from './components/AdminPanel';
 import { NotificationCenter } from './components/NotificationCenter';
-import { useIsMobile } from './hooks/useIsMobile';
-import { MobileView } from './components/MobileView';
 import { 
   LayoutDashboard, 
   Map as MapIcon, 
@@ -430,35 +428,6 @@ const App: React.FC = () => {
   }
 
   if (authRole === 'ADMIN') return <AdminPanel onRefresh={fetchData} onLogout={handleLogout} currentUser={currentUser} />;
-
-  const isMobile = useIsMobile();
-
-  if (isMobile) {
-    return (
-      <MobileView
-        drivers={currentUser ? [currentUser] : []}
-        vehicles={vehicles}
-        trips={trips}
-        expenses={expenses}
-        maintenance={maintenance}
-        onUpdate={fetchData}
-        onSetView={setCurrentView}
-        onAddTrip={(t) => handleAction('trips', t, 'insert')}
-        onUpdateTrip={(id, t) => handleAction('trips', { ...t, id }, 'update')}
-        onUpdateStatus={async (id, s, km) => { await handleAction('trips', { id, status: s }, 'update'); if (km && trips.find(x => x.id === id)?.vehicle_id) await handleAction('vehicles', { id: trips.find(x => x.id === id)!.vehicle_id, current_km: km }, 'update'); }}
-        onDeleteTrip={(id) => handleAction('trips', { id }, 'delete')}
-        onAddExpense={(e) => handleAction('expenses', e, 'insert')}
-        onUpdateExpense={(id, e) => handleAction('expenses', { ...e, id }, 'update')}
-        onDeleteExpense={(id) => handleAction('expenses', { id }, 'delete')}
-        onAddVehicle={(v) => handleAction('vehicles', v, 'insert')}
-        onUpdateVehicle={(id, v) => handleAction('vehicles', { ...v, id }, 'update')}
-        onDeleteVehicle={(id) => handleAction('vehicles', { id }, 'delete')}
-        onAddMaintenance={(m) => handleAction('maintenance', m, 'insert')}
-        onDeleteMaintenance={(id) => handleAction('maintenance', { id }, 'delete')}
-        isSaving={isSaving}
-      />
-    );
-  }
 
   const NavItem = ({ view, icon: Icon, label }: { view: AppView, icon: any, label: string }) => (
     <button onClick={() => { setCurrentView(view); setIsMenuOpen(false); }} className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${currentView === view ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}>
