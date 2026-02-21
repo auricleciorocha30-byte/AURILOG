@@ -435,42 +435,62 @@ const App: React.FC = () => {
 
   if (isMobile) {
     return (
-      <MobileView
-        drivers={currentUser ? [currentUser] : []}
-        vehicles={vehicles}
-        trips={trips}
-        expenses={expenses}
-        maintenance={maintenance}
-        roadServices={roadServices}
-        cargoCategories={cargoCategories}
-        jornadaLogs={jornadaLogs}
-        jornadaMode={jornadaMode}
-        jornadaStartTime={jornadaStartTime}
-        jornadaCurrentTime={jornadaCurrentTime}
-        setJornadaMode={setJornadaMode}
-        setJornadaStartTime={setJornadaStartTime}
-        onUpdate={fetchData}
-        onSetView={setCurrentView}
-        onAddTrip={(t) => handleAction('trips', t, 'insert')}
-        onUpdateTrip={(id, t) => handleAction('trips', { ...t, id }, 'update')}
-        onUpdateStatus={async (id, s, km) => { await handleAction('trips', { id, status: s }, 'update'); if (km && trips.find(x => x.id === id)?.vehicle_id) await handleAction('vehicles', { id: trips.find(x => x.id === id)!.vehicle_id, current_km: km }, 'update'); }}
-        onDeleteTrip={(id) => handleAction('trips', { id }, 'delete')}
-        onAddExpense={(e) => handleAction('expenses', e, 'insert')}
-        onUpdateExpense={(id, e) => handleAction('expenses', { ...e, id }, 'update')}
-        onDeleteExpense={(id) => handleAction('expenses', { id }, 'delete')}
-        onAddVehicle={(v) => handleAction('vehicles', v, 'insert')}
-        onUpdateVehicle={(id, v) => handleAction('vehicles', { ...v, id }, 'update')}
-        onDeleteVehicle={(id) => handleAction('vehicles', { id }, 'delete')}
-        onAddMaintenance={(m) => handleAction('maintenance', m, 'insert')}
-        onDeleteMaintenance={(id) => handleAction('maintenance', { id }, 'delete')}
-        onSaveJornadaLog={(l) => handleAction('jornada_logs', l, 'insert')}
-        onDeleteJornadaLog={(id) => handleAction('jornada_logs', { id }, 'delete')}
-        onClearJornadaHistory={async () => { if (!currentUser) return; setIsSaving(true); try { await supabase.from('jornada_logs').delete().eq('user_id', currentUser.id); setJornadaLogs([]); await fetchData(); } catch (err: any) { alert("Erro: " + err.message); } finally { setIsSaving(false); } }}
-        isSaving={isSaving}
-        onLogout={handleLogout}
-        onShowNotifications={() => setShowNotifications(true)}
-        notificationsCount={activeNotifications.length}
-      />
+      <>
+        <MobileView
+          drivers={currentUser ? [currentUser] : []}
+          vehicles={vehicles}
+          trips={trips}
+          expenses={expenses}
+          maintenance={maintenance}
+          roadServices={roadServices}
+          cargoCategories={cargoCategories}
+          jornadaLogs={jornadaLogs}
+          jornadaMode={jornadaMode}
+          jornadaStartTime={jornadaStartTime}
+          jornadaCurrentTime={jornadaCurrentTime}
+          setJornadaMode={setJornadaMode}
+          setJornadaStartTime={setJornadaStartTime}
+          onUpdate={fetchData}
+          onSetView={setCurrentView}
+          onAddTrip={(t) => handleAction('trips', t, 'insert')}
+          onUpdateTrip={(id, t) => handleAction('trips', { ...t, id }, 'update')}
+          onUpdateStatus={async (id, s, km) => { await handleAction('trips', { id, status: s }, 'update'); if (km && trips.find(x => x.id === id)?.vehicle_id) await handleAction('vehicles', { id: trips.find(x => x.id === id)!.vehicle_id, current_km: km }, 'update'); }}
+          onDeleteTrip={(id) => handleAction('trips', { id }, 'delete')}
+          onAddExpense={(e) => handleAction('expenses', e, 'insert')}
+          onUpdateExpense={(id, e) => handleAction('expenses', { ...e, id }, 'update')}
+          onDeleteExpense={(id) => handleAction('expenses', { id }, 'delete')}
+          onAddVehicle={(v) => handleAction('vehicles', v, 'insert')}
+          onUpdateVehicle={(id, v) => handleAction('vehicles', { ...v, id }, 'update')}
+          onDeleteVehicle={(id) => handleAction('vehicles', { id }, 'delete')}
+          onAddMaintenance={(m) => handleAction('maintenance', m, 'insert')}
+          onDeleteMaintenance={(id) => handleAction('maintenance', { id }, 'delete')}
+          onSaveJornadaLog={(l) => handleAction('jornada_logs', l, 'insert')}
+          onDeleteJornadaLog={(id) => handleAction('jornada_logs', { id }, 'delete')}
+          onClearJornadaHistory={async () => { if (!currentUser) return; setIsSaving(true); try { await supabase.from('jornada_logs').delete().eq('user_id', currentUser.id); setJornadaLogs([]); await fetchData(); } catch (err: any) { alert("Erro: " + err.message); } finally { setIsSaving(false); } }}
+          isSaving={isSaving}
+          onLogout={handleLogout}
+          onShowNotifications={() => setShowNotifications(true)}
+          notificationsCount={activeNotifications.length}
+        />
+        {showNotifications && (
+          <NotificationCenter 
+            notifications={activeNotifications} 
+            onClose={() => setShowNotifications(false)} 
+            onAction={(category) => {
+              const viewMap: Record<string, AppView> = {
+                'JORNADA': AppView.JORNADA,
+                'MAINTENANCE': AppView.MAINTENANCE,
+                'FINANCE': AppView.EXPENSES,
+                'TRIP': AppView.TRIPS,
+                'GENERAL': AppView.DASHBOARD
+              };
+              if (viewMap[category]) setCurrentView(viewMap[category]);
+              setShowNotifications(false);
+            }} 
+            onDismiss={handleDismissNotification}
+          />
+        )}
+      </>
     );
   }
 

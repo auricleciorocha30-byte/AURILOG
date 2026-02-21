@@ -43,6 +43,7 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
   const [origin, setOrigin] = useState({ city: '', state: 'SP' });
   const [destination, setDestination] = useState({ city: '', state: 'SP' });
   const [stops, setStops] = useState<TripStop[]>([]);
+  const [newStop, setNewStop] = useState({ city: '', state: 'SP' });
 
   const [formData, setFormData] = useState<any>({
     description: '',
@@ -368,6 +369,56 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, vehicles, expen
                       <select className="w-20 p-4 bg-white rounded-2xl font-bold" value={destination.state} onChange={e => setDestination({...destination, state: e.target.value})}>{BRAZILIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}</select>
                     </div>
                   </div>
+                </div>
+
+                <div className="mt-6 pt-6 border-t border-slate-200">
+                   <label className="text-[10px] font-black uppercase text-slate-400 ml-1 flex items-center gap-2 mb-2"><MapPin size={12}/> Adicionar Rotas / Escalas (Opcional)</label>
+                   
+                   {stops.length > 0 && (
+                     <div className="space-y-2 mb-4">
+                       {stops.map((stop, index) => (
+                         <div key={index} className="flex items-center justify-between bg-white p-3 px-4 rounded-2xl border border-slate-100 shadow-sm">
+                           <div className="flex items-center gap-3">
+                             <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-500">{index + 1}</div>
+                             <span className="text-xs font-bold text-slate-700 uppercase">{stop.city} - {stop.state}</span>
+                           </div>
+                           <button onClick={() => setStops(stops.filter((_, i) => i !== index))} className="text-slate-300 hover:text-rose-500 p-2 transition-colors"><Trash2 size={16}/></button>
+                         </div>
+                       ))}
+                     </div>
+                   )}
+
+                   <div className="flex gap-2">
+                      <input 
+                        placeholder="Cidade parada" 
+                        className="flex-1 p-4 bg-white rounded-2xl font-bold outline-none text-sm" 
+                        value={newStop.city} 
+                        onChange={e => setNewStop({...newStop, city: e.target.value})} 
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            if (newStop.city) {
+                              setStops([...stops, { city: newStop.city, state: newStop.state }]);
+                              setNewStop({ city: '', state: 'SP' });
+                            }
+                          }
+                        }}
+                      />
+                      <select className="w-20 p-4 bg-white rounded-2xl font-bold text-sm outline-none" value={newStop.state} onChange={e => setNewStop({...newStop, state: e.target.value})}>
+                        {BRAZILIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                      <button 
+                        onClick={() => {
+                          if (newStop.city) {
+                            setStops([...stops, { city: newStop.city, state: newStop.state }]);
+                            setNewStop({ city: '', state: 'SP' });
+                          }
+                        }} 
+                        className="bg-slate-900 text-white w-14 rounded-2xl flex items-center justify-center hover:bg-black transition-colors shadow-lg active:scale-95"
+                      >
+                        <Plus size={20}/>
+                      </button>
+                   </div>
                 </div>
               </div>
 
