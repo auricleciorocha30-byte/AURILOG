@@ -142,7 +142,10 @@ const App: React.FC = () => {
                 longitude: pos.coords.longitude,
                 updated_at: new Date().toISOString()
               }, { onConflict: 'user_id' }).then(({ error }) => {
-                if (error) console.error("Erro silencioso GPS update:", error.message);
+                if (error) {
+                  console.error("Erro silencioso GPS update:", error.message);
+                  setGpsError(`Erro ao salvar rota: ${error.message}`);
+                }
               });
             }
           },
