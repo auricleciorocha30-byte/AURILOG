@@ -72,12 +72,23 @@ export const MobileView: React.FC<MobileViewProps> = ({
     }
   };
 
+  const currentDriver = drivers[0];
+
   return (
-    <div className="h-full bg-slate-50 flex flex-col">
-      <MobileTopBar currentView={activeView} />
-      <main className="flex-1 overflow-y-auto pt-24 pb-28">
+    <div className="h-full bg-slate-50 flex flex-col font-['Plus_Jakarta_Sans'] relative overflow-hidden">
+      {/* Background Ambience */}
+      <div className="absolute top-0 left-0 w-full h-96 bg-gradient-to-b from-primary-50/50 to-transparent pointer-events-none z-0"></div>
+      
+      <MobileTopBar 
+        currentView={activeView} 
+        userName={currentDriver?.name || 'Motorista'} 
+        userRole={currentDriver ? 'Condutor Profissional' : 'Visitante'}
+      />
+      
+      <main className="flex-1 overflow-y-auto pt-32 pb-40 px-2 z-10 no-scrollbar">
         {renderContent()}
       </main>
+      
       <MobileBottomNav activeView={activeView} onSetView={setActiveView} />
     </div>
   );

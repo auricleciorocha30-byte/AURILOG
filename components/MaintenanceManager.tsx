@@ -82,7 +82,7 @@ export const MaintenanceManager: React.FC<MaintenanceManagerProps> = ({ maintena
         </button>
       </div>
 
-      <div className="bg-white rounded-[2rem] border shadow-sm overflow-hidden mx-2">
+      <div className="bg-white rounded-[2rem] border shadow-sm overflow-hidden mx-2 hidden md:block">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-slate-50 border-b">
@@ -130,6 +130,46 @@ export const MaintenanceManager: React.FC<MaintenanceManagerProps> = ({ maintena
         </div>
       </div>
 
+      {/* Mobile Card View */}
+      <div className="md:hidden space-y-4 px-4">
+        {maintenance.map(m => {
+          const status = getStatus(m);
+          const vehicle = vehicles.find(v => v.id === m.vehicle_id);
+          const StatusIcon = status.icon;
+
+          return (
+            <div key={m.id} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm relative">
+              <div className="flex justify-between items-start mb-4">
+                <div className="flex items-center gap-3">
+                   <div className="p-3 bg-slate-50 rounded-2xl text-slate-400">
+                      <Wrench size={20} />
+                   </div>
+                   <div>
+                      <h3 className="text-sm font-black text-slate-900 uppercase leading-tight">{m.part_name}</h3>
+                      <p className="text-[10px] font-bold text-slate-400 mt-1">
+                         {vehicle?.plate || '---'} • {new Date(m.purchase_date).toLocaleDateString()}
+                      </p>
+                   </div>
+                </div>
+                <button onClick={() => onDeleteMaintenance(m.id)} className="text-slate-300 hover:text-rose-500 p-2">
+                   <Trash2 size={18} />
+                </button>
+              </div>
+              
+              <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl">
+                 <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase ${status.bg} ${status.color}`}>
+                    <StatusIcon size={12}/> {status.label}
+                 </div>
+                 <div className="text-right">
+                    <p className="text-[8px] font-black uppercase text-slate-400">Custo</p>
+                    <p className="text-sm font-black text-rose-600">R$ {(m.cost || 0).toLocaleString()}</p>
+                 </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-end md:items-center justify-center p-0 md:p-4 z-50 overflow-y-auto">
           <div className="bg-white w-full md:max-w-md rounded-t-[2.5rem] md:rounded-[2.5rem] p-8 shadow-2xl animate-slide-up my-0 md:my-8 h-[90vh] md:h-auto md:max-h-[90vh] overflow-y-auto">
@@ -138,7 +178,7 @@ export const MaintenanceManager: React.FC<MaintenanceManagerProps> = ({ maintena
                <button onClick={() => setIsModalOpen(false)} className="text-slate-400"><X size={28}/></button>
             </div>
             
-            <div className="space-y-4 pb-32">
+            <div className="space-y-4 pb-10">
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Veículo</label>
                 <select 
