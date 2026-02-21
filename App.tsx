@@ -441,6 +441,14 @@ const App: React.FC = () => {
         trips={trips}
         expenses={expenses}
         maintenance={maintenance}
+        roadServices={roadServices}
+        cargoCategories={cargoCategories}
+        jornadaLogs={jornadaLogs}
+        jornadaMode={jornadaMode}
+        jornadaStartTime={jornadaStartTime}
+        jornadaCurrentTime={jornadaCurrentTime}
+        setJornadaMode={setJornadaMode}
+        setJornadaStartTime={setJornadaStartTime}
         onUpdate={fetchData}
         onSetView={setCurrentView}
         onAddTrip={(t) => handleAction('trips', t, 'insert')}
@@ -455,7 +463,13 @@ const App: React.FC = () => {
         onDeleteVehicle={(id) => handleAction('vehicles', { id }, 'delete')}
         onAddMaintenance={(m) => handleAction('maintenance', m, 'insert')}
         onDeleteMaintenance={(id) => handleAction('maintenance', { id }, 'delete')}
+        onSaveJornadaLog={(l) => handleAction('jornada_logs', l, 'insert')}
+        onDeleteJornadaLog={(id) => handleAction('jornada_logs', { id }, 'delete')}
+        onClearJornadaHistory={async () => { if (!currentUser) return; setIsSaving(true); try { await supabase.from('jornada_logs').delete().eq('user_id', currentUser.id); setJornadaLogs([]); await fetchData(); } catch (err: any) { alert("Erro: " + err.message); } finally { setIsSaving(false); } }}
         isSaving={isSaving}
+        onLogout={handleLogout}
+        onShowNotifications={() => setShowNotifications(true)}
+        notificationsCount={activeNotifications.length}
       />
     );
   }

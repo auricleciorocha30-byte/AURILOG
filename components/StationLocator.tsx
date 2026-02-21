@@ -113,19 +113,19 @@ export const StationLocator: React.FC<StationLocatorProps> = ({ roadServices = [
   };
 
   return (
-    <div className="max-w-[1400px] mx-auto space-y-6 pb-20 animate-fade-in px-4">
-      <div className="bg-slate-900 p-8 md:p-12 rounded-[3.5rem] text-white shadow-2xl border border-slate-800 relative overflow-hidden">
-        <div className="absolute top-0 right-0 p-12 opacity-5">
+    <div className="max-w-[1400px] mx-auto space-y-6 pb-20 animate-fade-in px-2 md:px-4">
+      <div className="bg-slate-900 p-6 md:p-12 rounded-[2.5rem] md:rounded-[3.5rem] text-white shadow-2xl border border-slate-800 relative overflow-hidden">
+        <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none">
           <Radar size={180} className="animate-pulse" />
         </div>
         
-        <div className="relative z-10 space-y-10">
+        <div className="relative z-10 space-y-6 md:space-y-10">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
             <div>
-              <h2 className="text-4xl font-black tracking-tighter uppercase flex items-center gap-3">
-                <MapPinned className="text-primary-500" size={40} /> Radar da Estrada
+              <h2 className="text-3xl md:text-4xl font-black tracking-tighter uppercase flex items-center gap-3">
+                <MapPinned className="text-primary-500" size={32} /> Radar da Estrada
               </h2>
-              <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-2">Localize Parceiros Oficiais e Serviços via IA</p>
+              <p className="text-slate-400 text-[10px] md:text-xs font-bold uppercase tracking-widest mt-2">Localize Parceiros Oficiais e Serviços via IA</p>
             </div>
             
             <div className="flex flex-wrap gap-2">
@@ -133,7 +133,7 @@ export const StationLocator: React.FC<StationLocatorProps> = ({ roadServices = [
                 <button 
                   key={cat}
                   onClick={() => setSelectedType(cat)}
-                  className={`px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-wider transition-all ${selectedType === cat ? 'bg-primary-600 text-white shadow-lg scale-105' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
+                  className={`px-4 py-2 md:px-6 md:py-3 rounded-xl md:rounded-2xl font-black text-[9px] md:text-[10px] uppercase tracking-wider transition-all ${selectedType === cat ? 'bg-primary-600 text-white shadow-lg scale-105' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
                 >
                   {cat}
                 </button>
@@ -146,14 +146,14 @@ export const StationLocator: React.FC<StationLocatorProps> = ({ roadServices = [
               <input 
                 type="text" 
                 placeholder="Ex: Rodovia Anhanguera, KM 100..." 
-                className="w-full p-6 bg-slate-800 border border-slate-700 rounded-3xl font-bold text-white outline-none focus:ring-4 focus:ring-primary-500/30 placeholder:text-slate-600 transition-all text-lg"
+                className="w-full p-4 md:p-6 bg-slate-800 border border-slate-700 rounded-2xl md:rounded-3xl font-bold text-white outline-none focus:ring-4 focus:ring-primary-500/30 placeholder:text-slate-600 transition-all text-base md:text-lg"
                 value={manualLocation}
                 onChange={e => setManualLocation(e.target.value)}
               />
-              <Search className="absolute right-6 top-6 text-slate-600" size={28} />
+              <Search className="absolute right-4 top-4 md:right-6 md:top-6 text-slate-600" size={24} />
             </div>
-            <button onClick={() => findServices(manualLocation !== "")} disabled={loading} className="bg-primary-600 text-white px-10 py-6 rounded-3xl font-black text-lg flex items-center justify-center gap-3 shadow-xl active:scale-95 transition-all">
-              {loading ? <Loader2 className="animate-spin" /> : <Radar size={24} />} Escanear Área
+            <button onClick={() => findServices(manualLocation !== "")} disabled={loading} className="bg-primary-600 text-white px-6 py-4 md:px-10 md:py-6 rounded-2xl md:rounded-3xl font-black text-sm md:text-lg flex items-center justify-center gap-3 shadow-xl active:scale-95 transition-all">
+              {loading ? <Loader2 className="animate-spin" /> : <Radar size={20} />} Escanear
             </button>
           </div>
           {statusMessage && <p className="text-primary-400 text-[10px] font-black uppercase tracking-[0.2em] animate-pulse">{statusMessage}</p>}

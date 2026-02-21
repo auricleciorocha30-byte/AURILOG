@@ -6,26 +6,27 @@ interface MobileTopBarProps {
   currentView: AppView;
   userName?: string;
   userRole?: string;
+  onNotificationClick: () => void;
+  notificationCount: number;
 }
 
 const viewTitles: Record<AppView, string> = {
   [AppView.DASHBOARD]: 'Visão Geral',
   [AppView.TRIPS]: 'Minhas Viagens',
   [AppView.FLEET]: 'Minha Frota',
-  [AppView.FINANCES]: 'Fluxo de Caixa',
+  [AppView.EXPENSES]: 'Fluxo de Caixa',
   [AppView.MAINTENANCE]: 'Oficina',
   [AppView.DRIVERS]: 'Motoristas',
   [AppView.REPORTS]: 'Relatórios',
   [AppView.SETTINGS]: 'Ajustes',
   [AppView.ADMIN]: 'Gestão',
-  [AppView.EXPENSES]: 'Despesas',
   [AppView.VEHICLES]: 'Veículos',
   [AppView.CALCULATOR]: 'Calculadora',
   [AppView.JORNADA]: 'Jornada',
   [AppView.STATIONS]: 'Postos & Radar'
 };
 
-export const MobileTopBar: React.FC<MobileTopBarProps> = ({ currentView, userName = 'Motorista', userRole = 'Condutor' }) => {
+export const MobileTopBar: React.FC<MobileTopBarProps> = ({ currentView, userName = 'Motorista', userRole = 'Condutor', onNotificationClick, notificationCount }) => {
   return (
     <header className="fixed top-0 left-0 right-0 z-40 px-6 pt-12 pb-4 bg-slate-50/80 backdrop-blur-xl border-b border-white/20 transition-all duration-300">
       <div className="flex items-center justify-between">
@@ -41,9 +42,11 @@ export const MobileTopBar: React.FC<MobileTopBarProps> = ({ currentView, userNam
           </div>
         </div>
         
-        <button className="relative p-3 bg-white rounded-2xl shadow-sm border border-slate-100 active:scale-95 transition-all">
+        <button onClick={onNotificationClick} className="relative p-3 bg-white rounded-2xl shadow-sm border border-slate-100 active:scale-95 transition-all">
           <Bell size={20} className="text-slate-600" />
-          <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-white"></span>
+          {notificationCount > 0 && (
+            <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-white animate-pulse"></span>
+          )}
         </button>
       </div>
     </header>
