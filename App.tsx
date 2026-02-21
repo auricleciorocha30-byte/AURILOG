@@ -82,6 +82,7 @@ const App: React.FC = () => {
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const isMobile = useIsMobile();
   
   // Estado para PWA Install Prompt
   const [installPrompt, setInstallPrompt] = useState<any>(null);
@@ -430,8 +431,6 @@ const App: React.FC = () => {
   }
 
   if (authRole === 'ADMIN') return <AdminPanel onRefresh={fetchData} onLogout={handleLogout} currentUser={currentUser} />;
-
-  const isMobile = useIsMobile();
 
   if (isMobile) {
     return (
