@@ -110,70 +110,29 @@ const App: React.FC = () => {
     }
   };
 
-  // Rastreamento de Localização (Apenas para Motoristas) - LÓGICA ROBUSTA COM RECONEXÃO
+  // Status Online/Offline (Apenas para Motoristas) - Atualiza timestamp de "visto por último"
   useEffect(() => {
-    let watchId: number | null = null;
-    let retryTimer: any = null;
+    let intervalId: any = null;
 
-    const startGpsTracking = () => {
-      // Limpa watcher anterior se existir
-      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-
+    const updateOnlineStatus = async () => {
       if (authRole === 'DRIVER' && currentUser && isOnline) {
-        if (!navigator.geolocation) {
-          setGpsError("GPS não suportado neste dispositivo.");
-          setIsGpsActive(false);
-          return;
-        }
-
-        watchId = navigator.geolocation.watchPosition(
-          (pos) => {
-            setIsGpsActive(true);
-            setGpsError(null);
-            
-            const now = Date.now();
-            // Envia se for a primeira vez (0) ou se passou 30 segundos
-            if (lastLocationSent.current === 0 || now - lastLocationSent.current >= 30000) {
-              lastLocationSent.current = now;
-              supabase.from('user_locations').upsert({
-                user_id: currentUser.id,
-                email: currentUser.email,
-                latitude: pos.coords.latitude,
-                longitude: pos.coords.longitude,
-                updated_at: new Date().toISOString()
-              }, { onConflict: 'user_id' }).then(({ error }) => {
-                if (error) {
-                  console.error("Erro silencioso GPS update:", error.message);
-                  setGpsError(`Erro ao salvar rota: ${error.message}`);
-                }
-              });
-            }
-          },
-          (err) => {
-            console.warn("Perda de sinal GPS:", err.message);
-            setIsGpsActive(false);
-            setGpsError("Sinal perdido. Reconectando...");
-            
-            // Tenta reiniciar o rastreamento em 5 segundos
-            if (retryTimer) clearTimeout(retryTimer);
-            retryTimer = setTimeout(startGpsTracking, 5000);
-          },
-          { 
-            enableHighAccuracy: true, 
-            timeout: 20000, // Aumentado para tolerar demoras na rede/satélite
-            maximumAge: 5000 // Aceita cache de até 5s para evitar leituras repetidas instantâneas
-          }
-        );
-      } else {
-        setIsGpsActive(false);
+        // Apenas atualiza o timestamp para indicar que está online
+        // Não envia latitude/longitude (null)
+        await supabase.from('user_locations').upsert({
+          user_id: currentUser.id,
+          email: currentUser.email,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' }).catch(err => console.error("Erro ao atualizar status online:", err));
       }
     };
 
-    startGpsTracking();
+    if (authRole === 'DRIVER' && isOnline) {
+      updateOnlineStatus(); // Atualiza imediatamente
+      intervalId = setInterval(updateOnlineStatus, 60000); // Atualiza a cada 1 minuto
+    }
 
     return () => {
-      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-      if (retryTimer) clearTimeout(retryTimer);
+      if (intervalId) clearInterval(intervalId);
     };
   }, [authRole, currentUser, isOnline]);
 
@@ -507,13 +466,12 @@ const App: React.FC = () => {
             </button>
           )}
 
-          <div className="px-6 py-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between group relative cursor-help" title={gpsError || "GPS Ativo"}>
+          <div className="px-6 py-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between group relative cursor-help" title={isOnline ? "Online" : "Offline"}>
              <div className="flex items-center gap-2">
-                <Navigation size={14} className={isGpsActive ? 'text-emerald-500' : 'text-slate-300'} />
-                <span className="text-[9px] font-black uppercase text-slate-500 tracking-widest">GPS Status</span>
+                <Wifi size={14} className={isOnline ? 'text-emerald-500' : 'text-slate-300'} />
+                <span className="text-[9px] font-black uppercase text-slate-500 tracking-widest">Conexão</span>
              </div>
-             <div className={`w-2 h-2 rounded-full ${isGpsActive ? 'bg-emerald-500 shadow-[0_0_8px_#10b981] animate-pulse' : 'bg-rose-300'}`}></div>
-             {gpsError && <div className="absolute bottom-full left-0 mb-2 w-48 p-2 bg-rose-500 text-white text-[9px] rounded-xl shadow-lg z-50">{gpsError}</div>}
+             <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500 shadow-[0_0_8px_#10b981] animate-pulse' : 'bg-rose-300'}`}></div>
           </div>
           <button onClick={() => setShowNotifications(true)} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase text-slate-500 hover:bg-slate-100 transition-all relative">
             <Bell size={20} /> Notificações
@@ -531,9 +489,9 @@ const App: React.FC = () => {
              <h1 className="text-xl font-black text-primary-600 tracking-tighter">AURILOG</h1>
           </div>
           <div className="flex items-center gap-2">
-            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border ${isGpsActive ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
-               <Navigation size={12} className={isGpsActive ? 'animate-pulse' : ''} />
-               <span className="text-[9px] font-black uppercase tracking-widest">{isGpsActive ? 'GPS ON' : 'GPS OFF'}</span>
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border ${isOnline ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : 'bg-rose-50 border-rose-200 text-rose-400'}`}>
+               {isOnline ? <Wifi size={12} /> : <WifiOff size={12} />}
+               <span className="text-[9px] font-black uppercase tracking-widest">{isOnline ? 'ONLINE' : 'OFFLINE'}</span>
             </div>
             <button onClick={() => setShowNotifications(true)} className="p-3 bg-slate-50 rounded-xl text-slate-500 relative">
               <Bell size={24}/>

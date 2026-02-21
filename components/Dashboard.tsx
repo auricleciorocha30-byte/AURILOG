@@ -84,7 +84,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ trips, expenses, maintenan
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 px-4">
         {/* Gráfico de Desempenho */}
-        <div className="bg-white p-10 rounded-[3.5rem] border shadow-sm">
+        <div className="bg-white p-6 md:p-10 rounded-[3.5rem] border shadow-sm">
           <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-8 flex items-center gap-2">
             <BarChart3 size={18}/> Balanço da Operação
           </h3>
@@ -104,7 +104,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ trips, expenses, maintenan
         </div>
 
         {/* Card de Eficiência */}
-        <div className="bg-slate-950 p-12 rounded-[4rem] text-white flex flex-col justify-center relative overflow-hidden shadow-2xl">
+        <div className="bg-slate-950 p-6 md:p-12 rounded-[4rem] text-white flex flex-col justify-center relative overflow-hidden shadow-2xl">
           <div className="absolute top-0 right-0 w-64 h-64 bg-primary-600/20 blur-[100px] rounded-full -translate-y-1/2 translate-x-1/2"></div>
           
           <div className="relative z-10">
