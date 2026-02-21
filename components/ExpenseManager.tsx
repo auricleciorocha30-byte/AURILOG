@@ -273,7 +273,7 @@ export const ExpenseManager: React.FC<ExpenseManagerProps> = ({ expenses, trips,
               <button onClick={resetForm} className="bg-slate-100 p-5 rounded-full text-slate-400 hover:text-slate-900 transition-all"><X size={28} /></button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6 pb-12">
+            <form onSubmit={handleSubmit} className="space-y-6 pb-32">
               <div className="space-y-2">
                 <label className="text-[11px] font-black uppercase text-slate-400 ml-1">O que foi pago?</label>
                 <input required type="text" placeholder="Ex: Prestação, Seguro, Diesel..." className="w-full p-5 bg-slate-50 rounded-3xl border-2 border-transparent focus:border-primary-500 font-bold outline-none text-lg transition-all" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />

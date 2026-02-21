@@ -102,14 +102,14 @@ export const VehicleManager: React.FC<VehicleManagerProps> = ({ vehicles, onAddV
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-start justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl animate-fade-in relative mt-10 mb-10 overflow-hidden">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-4 z-50 overflow-y-auto">
+          <div className="bg-white w-full md:max-w-md rounded-t-[2.5rem] md:rounded-[2.5rem] shadow-2xl animate-slide-up relative h-[90vh] md:h-auto md:max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center p-8 pb-4 border-b border-slate-50">
               <h3 className="text-2xl font-black">{editingId ? 'Editar Veículo' : 'Cadastrar Veículo'}</h3>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={28} /></button>
             </div>
             
-            <div className="p-8 space-y-5">
+            <div className="p-8 space-y-5 pb-32">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-[11px] font-black uppercase text-slate-400 ml-1">Placa</label>

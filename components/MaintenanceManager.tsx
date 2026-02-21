@@ -138,7 +138,7 @@ export const MaintenanceManager: React.FC<MaintenanceManagerProps> = ({ maintena
                <button onClick={() => setIsModalOpen(false)} className="text-slate-400"><X size={28}/></button>
             </div>
             
-            <div className="space-y-4 pb-10">
+            <div className="space-y-4 pb-32">
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Veículo</label>
                 <select 
