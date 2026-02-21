@@ -148,7 +148,7 @@ export const MobileView: React.FC<MobileViewProps> = ({
         notificationCount={notificationsCount}
       />
       
-      <main className="flex-1 overflow-y-auto pt-32 pb-40 px-2 z-10 no-scrollbar">
+      <main className="flex-1 overflow-y-auto pt-32 pb-40 px-2 no-scrollbar">
         {renderContent()}
       </main>
       
