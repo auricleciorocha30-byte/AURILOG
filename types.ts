@@ -8,7 +8,12 @@ export enum AppView {
   MAINTENANCE = 'MAINTENANCE',
   JORNADA = 'JORNADA',
   STATIONS = 'STATIONS',
-  ADMIN = 'ADMIN'
+  ADMIN = 'ADMIN',
+  FLEET = 'FLEET',
+  DRIVERS = 'DRIVERS',
+  REPORTS = 'REPORTS',
+  SETTINGS = 'SETTINGS',
+  FINANCES = 'FINANCES'
 }
 
 export enum TripStatus {

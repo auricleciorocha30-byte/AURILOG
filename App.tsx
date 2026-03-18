@@ -84,6 +84,24 @@ const App: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const isMobile = useIsMobile();
   
+  // Estado para data de hoje (atualiza à meia-noite)
+  const [today, setToday] = useState(() => {
+    const d = new Date();
+    d.setHours(0,0,0,0);
+    return d;
+  });
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const d = new Date();
+      d.setHours(0,0,0,0);
+      if (d.getTime() !== today.getTime()) {
+        setToday(d);
+      }
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [today]);
+  
   // Estado para PWA Install Prompt
   const [installPrompt, setInstallPrompt] = useState<any>(null);
 
@@ -121,11 +139,15 @@ const App: React.FC = () => {
       if (authRole === 'DRIVER' && currentUser && isOnline) {
         // Apenas atualiza o timestamp para indicar que está online
         // Não envia latitude/longitude (null)
-        await supabase.from('user_locations').upsert({
-          user_id: currentUser.id,
-          email: currentUser.email,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id' }).catch(err => console.error("Erro ao atualizar status online:", err));
+        try {
+          await supabase.from('user_locations').upsert({
+            user_id: currentUser.id,
+            email: currentUser.email,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'user_id' });
+        } catch (err) {
+          console.error("Erro ao atualizar status online:", err);
+        }
       }
     };
 
@@ -204,19 +226,27 @@ const App: React.FC = () => {
   // --- GERAÇÃO DE NOTIFICAÇÕES AUTOMÁTICAS DO SISTEMA (SININHO INTELIGENTE) ---
   const systemNotifications = useMemo(() => {
     const alerts: DbNotification[] = [];
-    const today = new Date();
-    today.setHours(0,0,0,0);
     
     // Define janela de 3 dias para frente
     const daysAheadLimit = 3;
     const futureLimitDate = new Date(today);
     futureLimitDate.setDate(today.getDate() + daysAheadLimit);
 
+    // Helper para parsear data YYYY-MM-DD sem problemas de timezone
+    const parseDate = (dateStr: string) => {
+      if (!dateStr) return null;
+      // Se for ISO string completa, pega só a parte da data
+      const cleanDate = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+      const [year, month, day] = cleanDate.split('-').map(Number);
+      if (isNaN(year) || isNaN(month) || isNaN(day)) return null;
+      return new Date(year, month - 1, day);
+    };
+
     // 1. Alertas de Viagem (Próximos 3 dias)
     trips.forEach(t => {
       if (t.status === TripStatus.SCHEDULED) {
-        const tripDate = new Date(t.date + 'T00:00:00');
-        if (tripDate >= today && tripDate <= futureLimitDate) {
+        const tripDate = parseDate(t.date);
+        if (tripDate && tripDate >= today && tripDate <= futureLimitDate) {
           const diffTime = tripDate.getTime() - today.getTime();
           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
           
@@ -241,15 +271,15 @@ const App: React.FC = () => {
     // 2. Alertas Financeiros (Vencidos ou Vencendo em até 3 dias)
     expenses.forEach(e => {
       if (!e.is_paid && e.due_date) {
-        const dueDateObj = new Date(e.due_date + 'T12:00:00');
-        dueDateObj.setHours(0,0,0,0);
+        const dueDateObj = parseDate(e.due_date);
+        if (!dueDateObj) return;
         
         if (dueDateObj < today) {
           // Atrasado
           alerts.push({
             id: `sys-exp-late-${e.id}`,
             title: 'Conta em Atraso',
-            message: `${e.description} venceu em ${new Date(e.due_date).toLocaleDateString()}. R$ ${e.amount}`,
+            message: `${e.description} venceu em ${dueDateObj.toLocaleDateString('pt-BR')}. R$ ${e.amount}`,
             type: 'URGENT',
             category: 'FINANCE',
             created_at: new Date().toISOString(),
@@ -319,7 +349,7 @@ const App: React.FC = () => {
     });
 
     return alerts;
-  }, [trips, expenses, maintenance, vehicles]);
+  }, [trips, expenses, maintenance, vehicles, today]);
 
   // Combina notificações do banco (filtrando as excluídas) com as do sistema
   const activeNotifications = useMemo(() => {
@@ -380,6 +410,11 @@ const App: React.FC = () => {
     const newDismissed = [...dismissedNotificationIds, id];
     setDismissedNotificationIds(newDismissed);
     localStorage.setItem('aurilog_dismissed_notifications', JSON.stringify(newDismissed));
+  };
+
+  const handleClearDismissedNotifications = () => {
+    setDismissedNotificationIds([]);
+    localStorage.removeItem('aurilog_dismissed_notifications');
   };
 
   if (!authRole) {
@@ -470,11 +505,14 @@ const App: React.FC = () => {
           onLogout={handleLogout}
           onShowNotifications={() => setShowNotifications(true)}
           notificationsCount={activeNotifications.length}
+          currentView={currentView}
         />
         {showNotifications && (
           <NotificationCenter 
             notifications={activeNotifications} 
             onClose={() => setShowNotifications(false)} 
+            onDismiss={handleDismissNotification}
+            onClearDismissed={dismissedNotificationIds.length > 0 ? handleClearDismissedNotifications : undefined}
             onAction={(category) => {
               const viewMap: Record<string, AppView> = {
                 'JORNADA': AppView.JORNADA,
@@ -486,7 +524,6 @@ const App: React.FC = () => {
               if (viewMap[category]) setCurrentView(viewMap[category]);
               setShowNotifications(false);
             }} 
-            onDismiss={handleDismissNotification}
           />
         )}
       </>

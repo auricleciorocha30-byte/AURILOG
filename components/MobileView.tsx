@@ -47,6 +47,7 @@ interface MobileViewProps {
   onLogout: () => void;
   onShowNotifications: () => void;
   notificationsCount: number;
+  currentView: AppView;
 }
 
 export const MobileView: React.FC<MobileViewProps> = ({ 
@@ -83,18 +84,18 @@ export const MobileView: React.FC<MobileViewProps> = ({
   isSaving,
   onLogout,
   onShowNotifications,
-  notificationsCount
+  notificationsCount,
+  currentView
 }) => {
-  const [activeView, setActiveView] = useState<AppView>(AppView.DASHBOARD);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const handleSetView = (view: AppView) => {
-    setActiveView(view);
+    onSetView(view);
     setIsMenuOpen(false);
   };
 
   const renderContent = () => {
-    switch (activeView) {
+    switch (currentView) {
       case AppView.DASHBOARD:
         return <Dashboard trips={trips} expenses={expenses} maintenance={maintenance} vehicles={vehicles} onSetView={handleSetView} />;
       case AppView.TRIPS:
@@ -123,10 +124,10 @@ export const MobileView: React.FC<MobileViewProps> = ({
   const MenuItem = ({ view, icon: Icon, label }: { view: AppView, icon: any, label: string }) => (
     <button 
       onClick={() => handleSetView(view)} 
-      className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all ${activeView === view ? 'bg-primary-50 text-primary-600' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
+      className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all ${currentView === view ? 'bg-primary-50 text-primary-600' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
     >
       <div className="flex items-center gap-4">
-        <div className={`p-2 rounded-xl ${activeView === view ? 'bg-primary-100 text-primary-600' : 'bg-white text-slate-400'}`}>
+        <div className={`p-2 rounded-xl ${currentView === view ? 'bg-primary-100 text-primary-600' : 'bg-white text-slate-400'}`}>
           <Icon size={20} />
         </div>
         <span className="font-black text-sm uppercase tracking-wide">{label}</span>
@@ -141,7 +142,7 @@ export const MobileView: React.FC<MobileViewProps> = ({
       <div className="absolute top-0 left-0 w-full h-96 bg-gradient-to-b from-primary-50/50 to-transparent pointer-events-none z-0"></div>
       
       <MobileTopBar 
-        currentView={activeView} 
+        currentView={currentView} 
         userName={currentDriver?.name || 'Motorista'} 
         userRole={currentDriver ? 'Condutor Profissional' : 'Visitante'}
         onNotificationClick={onShowNotifications}
@@ -152,7 +153,7 @@ export const MobileView: React.FC<MobileViewProps> = ({
         {renderContent()}
       </main>
       
-      <MobileBottomNav activeView={activeView} onSetView={handleSetView} onToggleMenu={() => setIsMenuOpen(true)} />
+      <MobileBottomNav activeView={currentView} onSetView={handleSetView} onToggleMenu={() => setIsMenuOpen(true)} />
 
       {/* Menu Drawer */}
       {isMenuOpen && (

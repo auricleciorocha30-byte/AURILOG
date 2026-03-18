@@ -18,9 +18,10 @@ interface NotificationCenterProps {
   onClose: () => void;
   onAction: (category: any) => void;
   onDismiss: (id: string) => void;
+  onClearDismissed?: () => void;
 }
 
-export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notifications, onClose, onAction, onDismiss }) => {
+export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notifications, onClose, onAction, onDismiss, onClearDismissed }) => {
   return (
     <div className="fixed inset-0 z-[110] flex justify-end animate-fade-in">
       <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm" onClick={onClose} />
@@ -109,7 +110,15 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notifica
           )}
         </div>
 
-        <div className="p-6 bg-slate-50 border-t">
+        <div className="p-6 bg-slate-50 border-t space-y-3">
+          {onClearDismissed && (
+            <button 
+              onClick={onClearDismissed} 
+              className="w-full py-3 bg-white border-2 border-slate-200 text-slate-400 hover:text-slate-600 hover:border-slate-300 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+            >
+              <Trash2 size={14} /> Restaurar Alertas Descartados
+            </button>
+          )}
           <button onClick={onClose} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl active:scale-95 transition-all">
             Fechar Central
           </button>

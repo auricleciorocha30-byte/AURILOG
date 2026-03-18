@@ -23,7 +23,8 @@ const viewTitles: Record<AppView, string> = {
   [AppView.VEHICLES]: 'Veículos',
   [AppView.CALCULATOR]: 'Calculadora',
   [AppView.JORNADA]: 'Jornada',
-  [AppView.STATIONS]: 'Postos & Radar'
+  [AppView.STATIONS]: 'Postos & Radar',
+  [AppView.FINANCES]: 'Finanças'
 };
 
 export const MobileTopBar: React.FC<MobileTopBarProps> = ({ currentView, userName = 'Motorista', userRole = 'Condutor', onNotificationClick, notificationCount }) => {
